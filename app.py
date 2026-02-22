@@ -392,8 +392,8 @@ def get_price(ticker):
         info = t.info
         name = info.get("longName") or info.get("shortName")
         return jsonify({"ticker": ticker.upper(), "price": price, "name": name})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 502
+    except Exception:
+        return jsonify({"error": f"Ticker '{ticker.upper()}' not found or data unavailable"}), 502
 
 
 @app.route("/api/holdings/refresh-prices", methods=["POST"])

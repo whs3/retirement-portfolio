@@ -113,22 +113,38 @@ async function loadHoldings() {
   const tbody    = document.getElementById('holdingsBody');
 
   if (!holdings.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding:2rem">
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted" style="padding:2rem">
       No holdings yet. <a href="/holdings">Add your first holding.</a></td></tr>`;
     return;
   }
 
-  tbody.innerHTML = holdings.map(h => {
-    const gain    = h.current_value - h.cost_basis;
-    const gainPct = h.cost_basis > 0 ? (gain / h.cost_basis * 100) : 0;
+  // Group by ticker (blank ticker = its own row keyed by id)
+  const groups = {};
+  for (const h of holdings) {
+    const key = h.ticker || `__no_ticker_${h.id}`;
+    if (!groups[key]) {
+      groups[key] = { ticker: h.ticker, name: h.name, asset_type: h.asset_type,
+                      shares: 0, cost_basis: 0, current_value: 0 };
+    }
+    groups[key].shares        += h.shares;
+    groups[key].cost_basis    += h.cost_basis;
+    groups[key].current_value += h.current_value;
+  }
+
+  tbody.innerHTML = Object.values(groups).map(g => {
+    const gain    = g.current_value - g.cost_basis;
+    const gainPct = g.cost_basis > 0 ? (gain / g.cost_basis * 100) : 0;
     const cls     = gain >= 0 ? 'text-success' : 'text-danger';
+    const pps     = g.shares > 0 ? fmt(g.current_value / g.shares) : '—';
     return `
     <tr>
-      <td><strong>${esc(h.name)}</strong></td>
-      <td class="text-muted">${esc(h.ticker)}</td>
-      <td><span class="badge badge-${h.asset_type}">${TYPE_LABELS[h.asset_type] ?? h.asset_type}</span></td>
-      <td class="text-right">${fmt(h.cost_basis)}</td>
-      <td class="text-right">${fmt(h.current_value)}</td>
+      <td><strong>${esc(g.ticker) || '—'}</strong></td>
+      <td>${esc(g.name)}</td>
+      <td><span class="badge badge-${g.asset_type}">${TYPE_LABELS[g.asset_type] ?? g.asset_type}</span></td>
+      <td class="text-right">${g.shares > 0 ? g.shares.toFixed(4) : '—'}</td>
+      <td class="text-right">${pps}</td>
+      <td class="text-right">${fmt(g.cost_basis)}</td>
+      <td class="text-right">${fmt(g.current_value)}</td>
       <td class="text-right ${cls}">${fmt(gain)}</td>
       <td class="text-right ${cls}">${(gain >= 0 ? '+' : '')}${fmtPct(gainPct)}</td>
     </tr>`;

@@ -53,19 +53,21 @@
   </div>
 </div>
 
-<!-- Holdings table -->
+<!-- Holdings by ticker -->
 <div class="card">
   <div class="card-header-row">
-    <h2 class="card-title">Holdings</h2>
+    <h2 class="card-title">Holdings by Symbol</h2>
     <a href="/holdings" class="btn btn-primary">Manage Holdings</a>
   </div>
   <div class="table-responsive">
     <table class="table">
       <thead>
         <tr>
-          <th>Name</th>
           <th>Ticker</th>
+          <th>Name</th>
           <th>Type</th>
+          <th class="text-right">Shares</th>
+          <th class="text-right">Price / Share</th>
           <th class="text-right">Cost Basis</th>
           <th class="text-right">Current Value</th>
           <th class="text-right">Gain / Loss</th>
@@ -73,7 +75,7 @@
         </tr>
       </thead>
       <tbody id="holdingsBody">
-        <tr><td colspan="7" class="text-center text-muted">Loading…</td></tr>
+        <tr><td colspan="9" class="text-center text-muted">Loading…</td></tr>
       </tbody>
     </table>
   </div>

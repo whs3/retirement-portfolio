@@ -349,6 +349,21 @@ body {
 .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
 .alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
 
+/* ── Holdings table tweaks ───────────────────────────────────────────────── */
+.table-holdings { font-size: .8rem; }
+
+.table-holdings .col-actions {
+  position: sticky;
+  right: 0;
+  background: var(--card);
+  box-shadow: -3px 0 6px rgba(0,0,0,.06);
+  white-space: nowrap;
+}
+
+.table-holdings thead .col-actions {
+  background: var(--card);
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .main-content { padding: 1rem; }

@@ -59,7 +59,7 @@ function renderTable() {
       <td class="text-right ${cls}">${fmt(gain)}</td>
       <td class="text-right ${cls}">${(gain >= 0 ? '+' : '')}${gainPct.toFixed(2)}%</td>
       <td>${h.purchase_date || '—'}</td>
-      <td style="white-space:nowrap">
+      <td class="col-actions">
         <button class="btn btn-sm btn-secondary" onclick="openModal(${h.id})">Edit</button>
         <button class="btn btn-sm btn-danger"    onclick="deleteHolding(${h.id}, '${esc(h.name)}')">Delete</button>
       </td>

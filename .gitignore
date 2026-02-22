@@ -1,0 +1,4 @@
+portfolio.db
+portfolio_audit.log
+__pycache__/
+*.pyc

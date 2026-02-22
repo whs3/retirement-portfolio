@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Holdings — Retirement Portfolio{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Holdings</h1>
+  <button class="btn btn-primary" onclick="openModal()">+ Add Holding</button>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Ticker</th>
+          <th>Type</th>
+          <th class="text-right">Shares</th>
+          <th class="text-right">Cost Basis</th>
+          <th class="text-right">Current Value</th>
+          <th class="text-right">Gain / Loss</th>
+          <th class="text-right">Return</th>
+          <th>Purchase Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="holdingsBody">
+        <tr><td colspan="10" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add / Edit modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Add Holding</h2>
+      <button class="modal-close" onclick="closeModalDirect()">&times;</button>
+    </div>
+    <form id="holdingForm" onsubmit="submitForm(event)">
+      <input type="hidden" id="holdingId">
+      <div class="form-grid">
+
+        <div class="form-group">
+          <label for="name">Name <span class="required">*</span></label>
+          <input type="text" id="name" placeholder="e.g., Apple Inc." required>
+        </div>
+
+        <div class="form-group">
+          <label for="ticker">Ticker Symbol</label>
+          <input type="text" id="ticker" placeholder="e.g., AAPL" maxlength="10">
+        </div>
+
+        <div class="form-group">
+          <label for="assetType">Asset Type <span class="required">*</span></label>
+          <select id="assetType" required>
+            <option value="stock">Stock</option>
+            <option value="bond">Bond</option>
+            <option value="etf">ETF</option>
+            <option value="mutual_fund">Mutual Fund</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="shares">Shares / Units</label>
+          <input type="number" id="shares" step="0.0001" min="0" placeholder="0">
+        </div>
+
+        <div class="form-group">
+          <label for="costBasis">Cost Basis ($) <span class="required">*</span></label>
+          <input type="number" id="costBasis" step="0.01" min="0" placeholder="0.00" required>
+        </div>
+
+        <div class="form-group">
+          <label for="currentValue">Current Value ($) <span class="required">*</span></label>
+          <input type="number" id="currentValue" step="0.01" min="0" placeholder="0.00" required>
+        </div>
+
+        <div class="form-group">
+          <label for="purchaseDate">Purchase Date</label>
+          <input type="date" id="purchaseDate">
+        </div>
+
+        <div class="form-group form-group-full">
+          <label for="notes">Notes</label>
+          <textarea id="notes" rows="2" placeholder="Optional notes…"></textarea>
+        </div>
+
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModalDirect()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="submitBtn">Add Holding</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/holdings.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Rebalance — Retirement Portfolio{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Portfolio Rebalancing</h1>
+</div>
+
+<div id="alertContainer"></div>
+
+<div class="grid-2">
+  <!-- Target allocation editor -->
+  <div class="card">
+    <h2 class="card-title">Target Allocations</h2>
+    <p class="card-description">Set target percentages. They must sum to exactly 100%.</p>
+    <form id="allocationForm" onsubmit="saveAllocations(event)">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Asset Type</th>
+            <th class="text-right">Target %</th>
+          </tr>
+        </thead>
+        <tbody id="targetBody">
+          <tr><td colspan="2" class="text-center text-muted">Loading…</td></tr>
+        </tbody>
+      </table>
+      <div class="allocation-total">
+        Total: <span id="allocationTotal">0</span>%
+        <span id="allocationWarning" class="warning-text" style="display:none">Must equal 100%</span>
+      </div>
+      <div class="form-actions" style="margin-top:1rem">
+        <button type="submit" class="btn btn-primary">Save Targets</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Current vs target chart -->
+  <div class="card">
+    <h2 class="card-title">Current vs Target</h2>
+    <div class="chart-container">
+      <canvas id="rebalanceChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Recommendations table -->
+<div class="card">
+  <h2 class="card-title">Rebalancing Recommendations</h2>
+  <p class="card-description">Based on your current holdings and target allocations.</p>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Asset Type</th>
+          <th class="text-right">Current Value</th>
+          <th class="text-right">Current %</th>
+          <th class="text-right">Target %</th>
+          <th class="text-right">Target Value</th>
+          <th class="text-right">Difference</th>
+          <th class="text-center">Action</th>
+        </tr>
+      </thead>
+      <tbody id="recommendationsBody">
+        <tr><td colspan="7" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/rebalance.js') }}"></script>
+{% endblock %}

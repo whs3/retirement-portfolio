@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Retirement Portfolio Tracker{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-brand">RetireTrack</div>
+  <ul class="nav-links">
+    <li><a href="/"         {% if request.endpoint == 'dashboard'      %}class="active"{% endif %}>Dashboard</a></li>
+    <li><a href="/holdings" {% if request.endpoint == 'holdings_page'  %}class="active"{% endif %}>Holdings</a></li>
+    <li><a href="/rebalance"{% if request.endpoint == 'rebalance_page' %}class="active"{% endif %}>Rebalance</a></li>
+    <li><a href="/api/export/csv" class="btn-nav-export">Export CSV</a></li>
+  </ul>
+</nav>
+
+<main class="main-content">
+  {% block content %}{% endblock %}
+</main>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

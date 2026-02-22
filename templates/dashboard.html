@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Retirement Portfolio{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Portfolio Dashboard</h1>
+  <span class="last-updated" id="lastUpdated"></span>
+</div>
+
+<!-- Summary cards -->
+<div class="summary-cards">
+  <div class="card summary-card">
+    <div class="card-label">Total Value</div>
+    <div class="card-value" id="totalValue">—</div>
+  </div>
+  <div class="card summary-card">
+    <div class="card-label">Cost Basis</div>
+    <div class="card-value" id="totalCost">—</div>
+  </div>
+  <div class="card summary-card">
+    <div class="card-label">Total Gain / Loss</div>
+    <div class="card-value" id="gainLoss">—</div>
+    <div class="card-sub"   id="gainLossPct">—</div>
+  </div>
+  <div class="card summary-card">
+    <div class="card-label">Holdings</div>
+    <div class="card-value" id="holdingCount">—</div>
+  </div>
+</div>
+
+<!-- Allocation chart + breakdown -->
+<div class="grid-2">
+  <div class="card">
+    <h2 class="card-title">Asset Allocation</h2>
+    <div class="chart-container">
+      <canvas id="allocationChart"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="card-title">Allocation Breakdown</h2>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Asset Type</th>
+          <th class="text-right">Value</th>
+          <th class="text-right">Allocation</th>
+        </tr>
+      </thead>
+      <tbody id="allocationBody">
+        <tr><td colspan="3" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Holdings table -->
+<div class="card">
+  <div class="card-header-row">
+    <h2 class="card-title">Holdings</h2>
+    <a href="/holdings" class="btn btn-primary">Manage Holdings</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Ticker</th>
+          <th>Type</th>
+          <th class="text-right">Cost Basis</th>
+          <th class="text-right">Current Value</th>
+          <th class="text-right">Gain / Loss</th>
+          <th class="text-right">Return</th>
+        </tr>
+      </thead>
+      <tbody id="holdingsBody">
+        <tr><td colspan="7" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

@@ -418,18 +418,21 @@ def refresh_prices():
 
     for h in holdings:
         try:
-            price = yf.Ticker(h["ticker"]).fast_info.last_price
+            t     = yf.Ticker(h["ticker"])
+            price = t.fast_info.last_price
             if price is None:
                 skipped.append(h["ticker"])
                 continue
+            info     = t.info
+            category = info.get("category") or info.get("sector") or h["category"]
             new_value = round(h["shares"] * price, 2)
             db.execute(
-                "UPDATE holdings SET current_value=?, updated_at=? WHERE id=?",
-                (new_value, now, h["id"])
+                "UPDATE holdings SET current_value=?, category=?, updated_at=? WHERE id=?",
+                (new_value, category, now, h["id"])
             )
             audit("PRICE_UPDATE", h["ticker"], h["name"],
                   old_value=h["current_value"], new_value=new_value, price=price)
-            updated.append({"ticker": h["ticker"], "price": price, "new_value": new_value})
+            updated.append({"ticker": h["ticker"], "price": price, "new_value": new_value, "category": category})
         except Exception as e:
             errors.append({"ticker": h["ticker"], "error": str(e)})
 

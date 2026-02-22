@@ -28,7 +28,7 @@ function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-const POLL_INTERVAL_MS = 5000;
+let pollTimer      = null;
 let lastEntryCount = -1;
 
 async function loadAuditLog() {
@@ -70,7 +70,14 @@ async function loadAuditLog() {
   }).join('');
 }
 
+function applyPollInterval() {
+  const ms = parseInt(document.getElementById('pollInterval').value, 10);
+  clearInterval(pollTimer);
+  if (ms > 0) pollTimer = setInterval(loadAuditLog, ms);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadAuditLog();
-  setInterval(loadAuditLog, POLL_INTERVAL_MS);
+  applyPollInterval();
+  document.getElementById('pollInterval').addEventListener('change', applyPollInterval);
 });

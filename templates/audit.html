@@ -4,11 +4,23 @@
 {% block content %}
 <div class="page-header">
   <h1>Audit Log</h1>
-  <span class="last-updated">
-    <span id="entryCount"></span>
-    &nbsp;&middot;&nbsp;
-    <span id="lastRefreshed"></span>
-  </span>
+  <div style="display:flex;align-items:center;gap:1rem">
+    <span class="last-updated">
+      <span id="entryCount"></span>
+      &nbsp;&middot;&nbsp;
+      <span id="lastRefreshed"></span>
+    </span>
+    <label style="display:flex;align-items:center;gap:0.4rem;font-size:.875rem;color:var(--text-muted)">
+      Refresh every
+      <select id="pollInterval" class="allocation-input" style="width:auto">
+        <option value="5000">5 s</option>
+        <option value="10000">10 s</option>
+        <option value="30000">30 s</option>
+        <option value="60000">1 min</option>
+        <option value="0">Off</option>
+      </select>
+    </label>
+  </div>
 </div>
 
 <div class="card">

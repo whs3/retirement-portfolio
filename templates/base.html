@@ -15,6 +15,7 @@
     <li><a href="/"         {% if request.endpoint == 'dashboard'      %}class="active"{% endif %}>Dashboard</a></li>
     <li><a href="/holdings" {% if request.endpoint == 'holdings_page'  %}class="active"{% endif %}>Holdings</a></li>
     <li><a href="/rebalance"{% if request.endpoint == 'rebalance_page' %}class="active"{% endif %}>Rebalance</a></li>
+    <li><a href="/audit"   {% if request.endpoint == 'audit_page'     %}class="active"{% endif %}>Audit Log</a></li>
     <li><a href="/api/export/csv" class="btn-nav-export">Export CSV</a></li>
   </ul>
 </nav>

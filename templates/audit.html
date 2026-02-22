@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — Retirement Portfolio{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Audit Log</h1>
+  <span class="last-updated" id="entryCount"></span>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Date &amp; Time</th>
+          <th>Action</th>
+          <th>Ticker</th>
+          <th>Name</th>
+          <th class="text-right">Current Value</th>
+          <th class="text-right">Cost Basis</th>
+          <th class="text-right">Value Change</th>
+          <th class="text-right">Cost Basis Change</th>
+        </tr>
+      </thead>
+      <tbody id="auditBody">
+        <tr><td colspan="8" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/audit.js') }}"></script>
+{% endblock %}

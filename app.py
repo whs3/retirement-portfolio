@@ -4,6 +4,7 @@ import logging
 import sqlite3
 from datetime import datetime
 
+import yfinance as yf
 from flask import Flask, g, jsonify, render_template, request, send_file
 
 app = Flask(__name__)
@@ -376,6 +377,52 @@ def get_rebalance():
             "recommendations": sorted(recommendations, key=lambda x: x["asset_type"]),
         }
     )
+
+
+# ── API: Live prices ──────────────────────────────────────────────────────────
+
+
+@app.route("/api/price/<ticker>")
+def get_price(ticker):
+    try:
+        info = yf.Ticker(ticker.upper()).fast_info
+        price = info.last_price
+        if price is None:
+            return jsonify({"error": "Price unavailable"}), 404
+        return jsonify({"ticker": ticker.upper(), "price": price})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+
+@app.route("/api/holdings/refresh-prices", methods=["POST"])
+def refresh_prices():
+    db = get_db()
+    holdings = db.execute(
+        "SELECT * FROM holdings WHERE ticker != ''"
+    ).fetchall()
+
+    updated, skipped, errors = [], [], []
+    now = datetime.utcnow().isoformat()
+
+    for h in holdings:
+        try:
+            price = yf.Ticker(h["ticker"]).fast_info.last_price
+            if price is None:
+                skipped.append(h["ticker"])
+                continue
+            new_value = round(h["shares"] * price, 2)
+            db.execute(
+                "UPDATE holdings SET current_value=?, updated_at=? WHERE id=?",
+                (new_value, now, h["id"])
+            )
+            audit("PRICE_UPDATE", h["ticker"], h["name"],
+                  old_value=h["current_value"], new_value=new_value, price=price)
+            updated.append({"ticker": h["ticker"], "price": price, "new_value": new_value})
+        except Exception as e:
+            errors.append({"ticker": h["ticker"], "error": str(e)})
+
+    db.commit()
+    return jsonify({"updated": updated, "skipped": skipped, "errors": errors})
 
 
 # ── API: CSV export ───────────────────────────────────────────────────────────

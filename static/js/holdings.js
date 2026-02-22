@@ -7,8 +7,9 @@ const TYPE_LABELS = {
   mutual_fund: 'Mutual Fund',
 };
 
-let holdings  = [];
-let editingId = null;
+let holdings    = [];
+let editingId   = null;
+let fetchedPrice = null;  // cached price from last "Fetch" call
 
 function fmt(n) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -99,7 +100,11 @@ function closeModal(event) {
 
 function closeModalDirect() {
   document.getElementById('modalOverlay').classList.remove('open');
-  editingId = null;
+  editingId    = null;
+  fetchedPrice = null;
+  const display = document.getElementById('priceDisplay');
+  display.style.display = 'none';
+  display.textContent   = '';
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -148,4 +153,75 @@ async function deleteHolding(id, name) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', loadHoldings);
+// ── Live prices ───────────────────────────────────────────────────────────────
+
+async function refreshPrices() {
+  const btn    = document.getElementById('refreshBtn');
+  const status = document.getElementById('refreshStatus');
+
+  btn.disabled    = true;
+  btn.textContent = 'Refreshing…';
+  status.style.display = 'none';
+  status.className     = 'alert';
+
+  try {
+    const res  = await fetch('/api/holdings/refresh-prices', { method: 'POST' });
+    const data = await res.json();
+
+    const parts = [];
+    if (data.updated.length) parts.push(`Updated ${data.updated.length} holding(s).`);
+    if (data.skipped.length) parts.push(`Skipped (no price): ${data.skipped.join(', ')}.`);
+    if (data.errors.length)  parts.push(`Errors: ${data.errors.map(e => `${e.ticker} — ${e.error}`).join('; ')}.`);
+
+    status.textContent    = parts.join('  ') || 'No tickered holdings to update.';
+    status.style.display  = 'block';
+    status.classList.add(data.errors.length ? 'alert-danger' : 'alert-success');
+
+    if (data.updated.length) loadHoldings();
+  } catch (err) {
+    status.textContent   = `Request failed: ${err.message}`;
+    status.style.display = 'block';
+    status.classList.add('alert-danger');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Refresh Prices';
+  }
+}
+
+async function fetchPrice() {
+  const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+  if (!ticker) { alert('Enter a ticker symbol first.'); return; }
+
+  const display = document.getElementById('priceDisplay');
+  display.textContent  = 'Fetching…';
+  display.style.display = 'inline';
+
+  try {
+    const res  = await fetch(`/api/price/${encodeURIComponent(ticker)}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      display.textContent = `Error: ${data.error}`;
+      fetchedPrice = null;
+      return;
+    }
+
+    fetchedPrice = data.price;
+    display.textContent = `Live price: $${data.price.toFixed(2)}`;
+    recalcCurrentValue();
+  } catch (err) {
+    display.textContent = `Request failed: ${err.message}`;
+    fetchedPrice = null;
+  }
+}
+
+function recalcCurrentValue() {
+  if (fetchedPrice === null) return;
+  const shares = parseFloat(document.getElementById('shares').value) || 0;
+  document.getElementById('currentValue').value = (shares * fetchedPrice).toFixed(2);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadHoldings();
+  document.getElementById('shares').addEventListener('input', recalcCurrentValue);
+});

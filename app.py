@@ -302,6 +302,21 @@ def portfolio_summary():
         for t, v in sorted(by_type.items())
     ]
 
+    by_category: dict[str, float] = {}
+    for h in holdings:
+        cat = h["category"] or "Uncategorized"
+        by_category.setdefault(cat, 0)
+        by_category[cat] += h["current_value"]
+
+    category_allocation = [
+        {
+            "category": cat,
+            "value": val,
+            "percentage": (val / total_value * 100) if total_value else 0,
+        }
+        for cat, val in sorted(by_category.items())
+    ]
+
     return jsonify(
         {
             "total_value": total_value,
@@ -310,6 +325,7 @@ def portfolio_summary():
             "gain_loss_pct": gain_loss_pct,
             "count": len(holdings),
             "allocation": allocation,
+            "category_allocation": category_allocation,
         }
     )
 

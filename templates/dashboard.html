@@ -53,6 +53,31 @@
   </div>
 </div>
 
+<!-- Category allocation chart + breakdown -->
+<div class="grid-2">
+  <div class="card">
+    <h2 class="card-title">Allocation by Category</h2>
+    <div class="chart-container">
+      <canvas id="categoryChart"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="card-title">Category Breakdown</h2>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th class="text-right">Value</th>
+          <th class="text-right">Allocation</th>
+        </tr>
+      </thead>
+      <tbody id="categoryBody">
+        <tr><td colspan="3" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <!-- Holdings by ticker -->
 <div class="card">
   <div class="card-header-row">

@@ -15,6 +15,13 @@ const TYPE_COLORS = {
 };
 
 let allocationChart = null;
+let categoryChart = null;
+
+// Palette for dynamically-generated category colors (cycles if more than 12 categories)
+const CATEGORY_COLORS = [
+  '#2563eb','#16a34a','#d97706','#7c3aed','#db2777','#0891b2',
+  '#65a30d','#ea580c','#9333ea','#0284c7','#15803d','#b45309',
+];
 
 function fmt(n) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -50,6 +57,8 @@ async function loadSummary() {
 
   renderAllocationChart(data.allocation);
   renderAllocationTable(data.allocation);
+  renderCategoryChart(data.category_allocation);
+  renderCategoryTable(data.category_allocation);
 }
 
 function renderAllocationChart(allocation) {
@@ -78,7 +87,21 @@ function renderAllocationChart(allocation) {
       responsive:          true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'right' },
+        legend: {
+          position: 'right',
+          labels: {
+            generateLabels: (chart) => {
+              return chart.data.labels.map((label, i) => ({
+                text: `${label} (${allocation[i].percentage.toFixed(1)}%)`,
+                fillStyle: chart.data.datasets[0].backgroundColor[i],
+                strokeStyle: '#fff',
+                lineWidth: 2,
+                hidden: false,
+                index: i,
+              }));
+            },
+          },
+        },
         tooltip: {
           callbacks: {
             label: (ctx) => {
@@ -101,6 +124,77 @@ function renderAllocationTable(allocation) {
   tbody.innerHTML = allocation.map(a => `
     <tr>
       <td><span class="badge badge-${a.asset_type}">${TYPE_LABELS[a.asset_type] ?? a.asset_type}</span></td>
+      <td class="text-right">${fmt(a.value)}</td>
+      <td class="text-right">${fmtPct(a.percentage)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderCategoryChart(categoryAllocation) {
+  const canvas = document.getElementById('categoryChart');
+  const ctx    = canvas.getContext('2d');
+
+  if (categoryChart) categoryChart.destroy();
+
+  if (!categoryAllocation || !categoryAllocation.length) {
+    canvas.parentElement.innerHTML = '<p class="text-muted text-center">No holdings yet.</p>';
+    return;
+  }
+
+  const colors = categoryAllocation.map((_, i) => CATEGORY_COLORS[i % CATEGORY_COLORS.length]);
+
+  categoryChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels:   categoryAllocation.map(a => a.category),
+      datasets: [{
+        data:            categoryAllocation.map(a => a.value),
+        backgroundColor: colors,
+        borderWidth: 2,
+        borderColor: '#fff',
+      }],
+    },
+    options: {
+      responsive:          true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            generateLabels: (chart) => {
+              return chart.data.labels.map((label, i) => ({
+                text: `${label} (${categoryAllocation[i].percentage.toFixed(1)}%)`,
+                fillStyle: chart.data.datasets[0].backgroundColor[i],
+                strokeStyle: '#fff',
+                lineWidth: 2,
+                hidden: false,
+                index: i,
+              }));
+            },
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const a = categoryAllocation[ctx.dataIndex];
+              return ` ${fmt(a.value)} (${fmtPct(a.percentage)})`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+function renderCategoryTable(categoryAllocation) {
+  const tbody = document.getElementById('categoryBody');
+  if (!categoryAllocation || !categoryAllocation.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No holdings yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = categoryAllocation.map(a => `
+    <tr>
+      <td>${esc(a.category)}</td>
       <td class="text-right">${fmt(a.value)}</td>
       <td class="text-right">${fmtPct(a.percentage)}</td>
     </tr>

@@ -23,10 +23,19 @@ python app.py
 
 Then open http://localhost:5000 in your browser. The database (`portfolio.db`) is created automatically on first run with default target allocations of 60% stock / 30% bond / 5% ETF / 5% mutual fund.
 
+To pre-populate the database with 18 sample holdings across all asset types:
+
+```bash
+python seed.py
+```
+
+The seed script is safe to re-run — it skips any holdings that already exist.
+
 ## Project Structure
 
 ```
 app.py              # Flask app — all routes and database logic
+seed.py             # Loads sample holdings into portfolio.db
 templates/          # Jinja2 HTML templates
 static/css/         # Stylesheet
 static/js/          # Per-page JavaScript (dashboard, holdings, rebalance, audit)

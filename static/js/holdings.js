@@ -48,7 +48,7 @@ function renderTable() {
 
     return `
     <tr>
-      <td><strong>${esc(h.name)}</strong>${notes}</td>
+      <td style="white-space:nowrap"><strong>${esc(h.name)}</strong>${notes}</td>
       <td>${esc(h.ticker) || '—'}</td>
       <td><span class="badge badge-${h.asset_type}">${TYPE_LABELS[h.asset_type] ?? h.asset_type}</span></td>
       <td>${esc(h.category) || '—'}</td>

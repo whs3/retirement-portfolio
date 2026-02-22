@@ -210,6 +210,9 @@ async function fetchPrice() {
 
     fetchedPrice = data.price;
     display.textContent = `Live price: $${data.price.toFixed(2)}`;
+    if (data.name && !document.getElementById('name').value.trim()) {
+      document.getElementById('name').value = data.name;
+    }
     recalcCurrentValue();
   } catch (err) {
     display.textContent = `Request failed: ${err.message}`;

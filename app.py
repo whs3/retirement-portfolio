@@ -385,11 +385,13 @@ def get_rebalance():
 @app.route("/api/price/<ticker>")
 def get_price(ticker):
     try:
-        info = yf.Ticker(ticker.upper()).fast_info
-        price = info.last_price
+        t = yf.Ticker(ticker.upper())
+        price = t.fast_info.last_price
         if price is None:
             return jsonify({"error": "Price unavailable"}), 404
-        return jsonify({"ticker": ticker.upper(), "price": price})
+        info = t.info
+        name = info.get("longName") or info.get("shortName")
+        return jsonify({"ticker": ticker.upper(), "price": price, "name": name})
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 

@@ -34,7 +34,7 @@ function renderTable() {
   const tbody = document.getElementById('holdingsBody');
 
   if (!holdings.length) {
-    tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted" style="padding:2rem">
+    tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted" style="padding:2rem">
       No holdings yet. Click "Add Holding" to get started.</td></tr>`;
     return;
   }
@@ -44,6 +44,7 @@ function renderTable() {
     const gainPct = h.cost_basis > 0 ? (gain / h.cost_basis * 100) : 0;
     const cls     = gain >= 0 ? 'text-success' : 'text-danger';
     const notes   = h.notes ? `<br><small class="text-muted">${esc(h.notes)}</small>` : '';
+    const pps     = h.shares > 0 ? fmt(h.current_value / h.shares) : '—';
 
     return `
     <tr>
@@ -52,6 +53,7 @@ function renderTable() {
       <td><span class="badge badge-${h.asset_type}">${TYPE_LABELS[h.asset_type] ?? h.asset_type}</span></td>
       <td class="text-right">${h.shares > 0 ? h.shares : '—'}</td>
       <td class="text-right">${fmt(h.cost_basis)}</td>
+      <td class="text-right">${pps}</td>
       <td class="text-right">${fmt(h.current_value)}</td>
       <td class="text-right ${cls}">${fmt(gain)}</td>
       <td class="text-right ${cls}">${(gain >= 0 ? '+' : '')}${gainPct.toFixed(2)}%</td>

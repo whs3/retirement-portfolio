@@ -64,6 +64,7 @@ def init_db():
             name          TEXT    NOT NULL,
             ticker        TEXT    NOT NULL DEFAULT '',
             asset_type    TEXT    NOT NULL,
+            category      TEXT    NOT NULL DEFAULT '',
             shares        REAL    NOT NULL DEFAULT 0,
             cost_basis    REAL    NOT NULL DEFAULT 0,
             current_value REAL    NOT NULL DEFAULT 0,
@@ -87,6 +88,12 @@ def init_db():
         """
     )
     conn.commit()
+    # Migrate existing databases
+    try:
+        conn.execute("ALTER TABLE holdings ADD COLUMN category TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.close()
 
 
@@ -181,13 +188,14 @@ def add_holding():
     db = get_db()
     cur = db.execute(
         """INSERT INTO holdings
-               (name, ticker, asset_type, shares, cost_basis, current_value,
+               (name, ticker, asset_type, category, shares, cost_basis, current_value,
                 purchase_date, notes, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data["name"].strip(),
             (data.get("ticker") or "").strip().upper(),
             data["asset_type"],
+            (data.get("category") or "").strip(),
             float(data.get("shares") or 0),
             float(data["cost_basis"]),
             float(data["current_value"]),
@@ -219,13 +227,14 @@ def update_holding(hid):
     now = datetime.utcnow().isoformat()
     db.execute(
         """UPDATE holdings
-           SET name=?, ticker=?, asset_type=?, shares=?, cost_basis=?,
+           SET name=?, ticker=?, asset_type=?, category=?, shares=?, cost_basis=?,
                current_value=?, purchase_date=?, notes=?, updated_at=?
            WHERE id=?""",
         (
             (data.get("name") or row["name"]).strip(),
             (data.get("ticker") or row["ticker"]).strip().upper(),
             data.get("asset_type") or row["asset_type"],
+            (data.get("category") if data.get("category") is not None else row["category"]).strip(),
             float(data.get("shares") if data.get("shares") is not None else row["shares"]),
             float(data.get("cost_basis") if data.get("cost_basis") is not None else row["cost_basis"]),
             float(data.get("current_value") if data.get("current_value") is not None else row["current_value"]),
@@ -390,8 +399,9 @@ def get_price(ticker):
         if price is None:
             return jsonify({"error": "Price unavailable"}), 404
         info = t.info
-        name = info.get("longName") or info.get("shortName")
-        return jsonify({"ticker": ticker.upper(), "price": price, "name": name})
+        name     = info.get("longName") or info.get("shortName")
+        category = info.get("category") or info.get("sector") or ""
+        return jsonify({"ticker": ticker.upper(), "price": price, "name": name, "category": category})
     except Exception:
         return jsonify({"error": f"Ticker '{ticker.upper()}' not found or data unavailable"}), 502
 

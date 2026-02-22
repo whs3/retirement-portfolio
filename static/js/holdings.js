@@ -34,7 +34,7 @@ function renderTable() {
   const tbody = document.getElementById('holdingsBody');
 
   if (!holdings.length) {
-    tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted" style="padding:2rem">
+    tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted" style="padding:2rem">
       No holdings yet. Click "Add Holding" to get started.</td></tr>`;
     return;
   }
@@ -51,6 +51,7 @@ function renderTable() {
       <td><strong>${esc(h.name)}</strong>${notes}</td>
       <td>${esc(h.ticker) || '—'}</td>
       <td><span class="badge badge-${h.asset_type}">${TYPE_LABELS[h.asset_type] ?? h.asset_type}</span></td>
+      <td>${esc(h.category) || '—'}</td>
       <td class="text-right">${h.shares > 0 ? h.shares : '—'}</td>
       <td class="text-right">${fmt(h.cost_basis)}</td>
       <td class="text-right">${pps}</td>
@@ -80,6 +81,7 @@ function openModal(id = null) {
     document.getElementById('holdingId').value    = h.id;
     document.getElementById('name').value         = h.name;
     document.getElementById('ticker').value       = h.ticker;
+    document.getElementById('category').value     = h.category;
     document.getElementById('assetType').value    = h.asset_type;
     document.getElementById('shares').value       = h.shares;
     document.getElementById('costBasis').value    = h.cost_basis;
@@ -117,6 +119,7 @@ async function submitForm(event) {
   const data = {
     name:          document.getElementById('name').value,
     ticker:        document.getElementById('ticker').value,
+    category:      document.getElementById('category').value,
     asset_type:    document.getElementById('assetType').value,
     shares:        parseFloat(document.getElementById('shares').value) || 0,
     cost_basis:    parseFloat(document.getElementById('costBasis').value),
@@ -212,6 +215,9 @@ async function fetchPrice() {
     display.textContent = `Live price: $${data.price.toFixed(2)}`;
     if (data.name && !document.getElementById('name').value.trim()) {
       document.getElementById('name').value = data.name;
+    }
+    if (data.category && !document.getElementById('category').value.trim()) {
+      document.getElementById('category').value = data.category;
     }
     recalcCurrentValue();
   } catch (err) {

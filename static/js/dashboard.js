@@ -113,7 +113,7 @@ async function loadHoldings() {
   const tbody    = document.getElementById('holdingsBody');
 
   if (!holdings.length) {
-    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted" style="padding:2rem">
+    tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted" style="padding:2rem">
       No holdings yet. <a href="/holdings">Add your first holding.</a></td></tr>`;
     return;
   }
@@ -124,7 +124,7 @@ async function loadHoldings() {
     const key = h.ticker || `__no_ticker_${h.id}`;
     if (!groups[key]) {
       groups[key] = { ticker: h.ticker, name: h.name, asset_type: h.asset_type,
-                      shares: 0, cost_basis: 0, current_value: 0 };
+                      category: h.category, shares: 0, cost_basis: 0, current_value: 0 };
     }
     groups[key].shares        += h.shares;
     groups[key].cost_basis    += h.cost_basis;
@@ -141,6 +141,7 @@ async function loadHoldings() {
       <td><strong>${esc(g.ticker) || '—'}</strong></td>
       <td>${esc(g.name)}</td>
       <td><span class="badge badge-${g.asset_type}">${TYPE_LABELS[g.asset_type] ?? g.asset_type}</span></td>
+      <td>${esc(g.category) || '—'}</td>
       <td class="text-right">${g.shares > 0 ? g.shares.toFixed(4) : '—'}</td>
       <td class="text-right">${pps}</td>
       <td class="text-right">${fmt(g.cost_basis)}</td>

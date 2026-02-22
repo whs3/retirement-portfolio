@@ -28,12 +28,22 @@ function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+const POLL_INTERVAL_MS = 5000;
+let lastEntryCount = -1;
+
 async function loadAuditLog() {
   const res     = await fetch('/api/audit');
   const entries = await res.json();
 
+  // Update count + "last refreshed" indicator
   document.getElementById('entryCount').textContent =
     entries.length === 1 ? '1 entry' : `${entries.length} entries`;
+  document.getElementById('lastRefreshed').textContent =
+    'Refreshed ' + new Date().toLocaleTimeString();
+
+  // Skip re-rendering the table if nothing has changed
+  if (entries.length === lastEntryCount) return;
+  lastEntryCount = entries.length;
 
   const tbody = document.getElementById('auditBody');
   if (!entries.length) {
@@ -60,4 +70,7 @@ async function loadAuditLog() {
   }).join('');
 }
 
-document.addEventListener('DOMContentLoaded', loadAuditLog);
+document.addEventListener('DOMContentLoaded', () => {
+  loadAuditLog();
+  setInterval(loadAuditLog, POLL_INTERVAL_MS);
+});

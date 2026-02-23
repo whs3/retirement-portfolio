@@ -38,7 +38,7 @@ async function loadTargetAllocations() {
         <input type="number" class="allocation-input"
                name="${esc(a.category)}"
                value="${a.target_percentage}"
-               min="0" max="100" step="0.01"
+               min="0" max="100" step="any"
                oninput="updateTotal()">
       </td>
     </tr>

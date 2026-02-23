@@ -38,7 +38,7 @@ async function loadTargetAllocations() {
         <input type="number" class="allocation-input"
                name="${esc(a.category)}"
                value="${a.target_percentage}"
-               min="0" max="100" step="0.1"
+               min="0" max="100" step="0.01"
                oninput="updateTotal()">
       </td>
     </tr>
@@ -59,6 +59,20 @@ function updateTotal() {
   totalEl.textContent      = total.toFixed(1);
   totalEl.style.color      = ok ? '' : 'var(--danger)';
   warningEl.style.display  = ok ? 'none' : 'inline';
+}
+
+async function useCurrentAllocations() {
+  const res  = await fetch('/api/rebalance');
+  const data = await res.json();
+  const pctMap = {};
+  data.recommendations.forEach(r => { pctMap[r.category] = r.current_pct; });
+
+  document.querySelectorAll('.allocation-input').forEach(inp => {
+    if (pctMap[inp.name] !== undefined) {
+      inp.value = pctMap[inp.name].toFixed(4);
+    }
+  });
+  updateTotal();
 }
 
 async function saveAllocations(event) {
@@ -153,7 +167,7 @@ function renderRecommendations(recs) {
     <tr>
       <td>${esc(r.category)}</td>
       <td class="text-right">${fmt(r.current_value)}</td>
-      <td class="text-right">${r.current_pct.toFixed(1)}%</td>
+      <td class="text-right">${r.current_pct.toFixed(2)}%</td>
       <td class="text-right">${r.target_pct.toFixed(1)}%</td>
       <td class="text-right">${fmt(r.target_value)}</td>
       <td class="text-right ${diffCls}">${r.difference >= 0 ? '+' : ''}${fmt(r.difference)}</td>

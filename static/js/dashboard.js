@@ -280,9 +280,48 @@ function renderHoldingsTable() {
   }).join('');
 }
 
+function updateTimestamp() {
+  document.getElementById('lastUpdated').textContent =
+    'As of ' + new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+async function refreshPrices() {
+  const btn    = document.getElementById('refreshBtn');
+  const status = document.getElementById('refreshStatus');
+
+  btn.disabled    = true;
+  btn.textContent = 'Refreshing…';
+  status.style.display = 'none';
+  status.className     = 'alert';
+
+  try {
+    const res  = await fetch('/api/holdings/refresh-prices', { method: 'POST' });
+    const data = await res.json();
+
+    const parts = [];
+    if (data.updated.length) parts.push(`Updated ${data.updated.length} holding(s).`);
+    if (data.skipped.length) parts.push(`Skipped (no price): ${data.skipped.join(', ')}.`);
+    if (data.errors.length)  parts.push(`Errors: ${data.errors.map(e => `${e.ticker} — ${e.error}`).join('; ')}.`);
+
+    status.textContent   = parts.join('  ') || 'No tickered holdings to update.';
+    status.style.display = 'block';
+    status.classList.add(data.errors.length ? 'alert-danger' : 'alert-success');
+
+    updateTimestamp();
+    loadSummary();
+    loadHoldings();
+  } catch (err) {
+    status.textContent   = `Request failed: ${err.message}`;
+    status.style.display = 'block';
+    status.classList.add('alert-danger');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Refresh Prices';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  updateTimestamp();
   loadSummary();
   loadHoldings();
-  document.getElementById('lastUpdated').textContent =
-    'As of ' + new Date().toLocaleDateString('en-US', { dateStyle: 'medium' });
 });

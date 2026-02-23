@@ -8,9 +8,11 @@ const TYPE_LABELS = {
   cash:        'Cash',
 };
 
-let holdings    = [];
-let editingId   = null;
+let holdings     = [];
+let editingId    = null;
 let fetchedPrice = null;  // cached price from last "Fetch" call
+let sortCol      = 'name';
+let sortDir      = 1;  // 1 = asc, -1 = desc
 
 function fmt(n) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -31,6 +33,12 @@ async function loadHoldings() {
   renderTable();
 }
 
+function sortHoldings(col) {
+  sortDir = col === sortCol ? -sortDir : 1;
+  sortCol = col;
+  renderTable();
+}
+
 function renderTable() {
   const tbody = document.getElementById('holdingsBody');
 
@@ -40,13 +48,29 @@ function renderTable() {
     return;
   }
 
-  tbody.innerHTML = holdings.map(h => {
-    const gain    = h.current_value - h.cost_basis;
-    const gainPct = h.cost_basis > 0 ? (gain / h.cost_basis * 100) : 0;
-    const cls     = gain >= 0 ? 'text-success' : 'text-danger';
-    const notes   = h.notes ? `<br><small class="text-muted">${esc(h.notes)}</small>` : '';
-    const pps     = h.shares > 0 ? fmt(h.current_value / h.shares) : '—';
+  // Augment with derived sort fields
+  const rows = holdings.map(h => ({
+    ...h,
+    gain:    h.current_value - h.cost_basis,
+    gainPct: h.cost_basis > 0 ? (h.current_value - h.cost_basis) / h.cost_basis * 100 : 0,
+    pps:     h.shares > 0 ? h.current_value / h.shares : 0,
+  }));
 
+  rows.sort((a, b) => {
+    const av = a[sortCol] ?? '';
+    const bv = b[sortCol] ?? '';
+    if (typeof av === 'string') return av.localeCompare(bv) * sortDir;
+    return (av - bv) * sortDir;
+  });
+
+  // Update sort indicators
+  document.querySelectorAll('.sort-indicator').forEach(el => {
+    el.textContent = el.dataset.col === sortCol ? (sortDir === 1 ? ' ↑' : ' ↓') : '';
+  });
+
+  tbody.innerHTML = rows.map(h => {
+    const cls   = h.gain >= 0 ? 'text-success' : 'text-danger';
+    const notes = h.notes ? `<br><small class="text-muted">${esc(h.notes)}</small>` : '';
     return `
     <tr>
       <td style="white-space:nowrap"><strong>${esc(h.name)}</strong>${notes}</td>
@@ -55,10 +79,10 @@ function renderTable() {
       <td>${esc(h.category) || '—'}</td>
       <td class="text-right">${h.shares > 0 ? h.shares : '—'}</td>
       <td class="text-right">${fmt(h.cost_basis)}</td>
-      <td class="text-right">${pps}</td>
+      <td class="text-right">${h.pps > 0 ? fmt(h.pps) : '—'}</td>
       <td class="text-right">${fmt(h.current_value)}</td>
-      <td class="text-right ${cls}">${fmt(gain)}</td>
-      <td class="text-right ${cls}">${(gain >= 0 ? '+' : '')}${gainPct.toFixed(2)}%</td>
+      <td class="text-right ${cls}">${fmt(h.gain)}</td>
+      <td class="text-right ${cls}">${(h.gain >= 0 ? '+' : '')}${h.gainPct.toFixed(2)}%</td>
       <td>${h.purchase_date || '—'}</td>
       <td class="col-actions">
         <button class="btn btn-sm btn-secondary" onclick="openModal(${h.id})">Edit</button>

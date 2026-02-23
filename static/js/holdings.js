@@ -5,6 +5,7 @@ const TYPE_LABELS = {
   bond:        'Bond',
   etf:         'ETF',
   mutual_fund: 'Mutual Fund',
+  cash:        'Cash',
 };
 
 let holdings    = [];
@@ -229,12 +230,23 @@ async function fetchPrice() {
 }
 
 function recalcCurrentValue() {
-  if (fetchedPrice === null) return;
+  const ticker = document.getElementById('ticker').value.toUpperCase();
   const shares = parseFloat(document.getElementById('shares').value) || 0;
+  if (ticker === '$$CASH') {
+    document.getElementById('currentValue').value = shares.toFixed(2);
+    return;
+  }
+  if (fetchedPrice === null) return;
   document.getElementById('currentValue').value = (shares * fetchedPrice).toFixed(2);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   loadHoldings();
   document.getElementById('shares').addEventListener('input', recalcCurrentValue);
+  document.getElementById('ticker').addEventListener('input', () => {
+    if (document.getElementById('ticker').value.toUpperCase() === '$$CASH') {
+      document.getElementById('assetType').value = 'cash';
+      recalcCurrentValue();
+    }
+  });
 });

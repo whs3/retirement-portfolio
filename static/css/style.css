@@ -194,6 +194,7 @@ body {
 .badge-bond         { background: #dcfce7; color: #15803d; }
 .badge-etf          { background: #fef3c7; color: #b45309; }
 .badge-mutual_fund  { background: #f3e8ff; color: #7e22ce; }
+.badge-cash         { background: #e2e8f0; color: #475569; }
 .badge-buy          { background: #dcfce7; color: #15803d; }
 .badge-sell         { background: #fee2e2; color: #b91c1c; }
 .badge-hold         { background: #f1f5f9; color: #475569; }

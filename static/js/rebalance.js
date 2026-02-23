@@ -1,18 +1,13 @@
 'use strict';
 
-const TYPE_LABELS = {
-  stock:       'Stock',
-  bond:        'Bond',
-  etf:         'ETF',
-  mutual_fund: 'Mutual Fund',
-};
+const CATEGORY_COLORS = [
+  '#2563eb','#16a34a','#d97706','#7c3aed','#db2777','#0891b2',
+  '#65a30d','#ea580c','#9333ea','#0284c7','#15803d','#b45309',
+];
 
-const TYPE_COLORS = {
-  stock:       '#2563eb',
-  bond:        '#16a34a',
-  etf:         '#d97706',
-  mutual_fund: '#7c3aed',
-};
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 let rebalanceChart = null;
 
@@ -38,10 +33,10 @@ async function loadTargetAllocations() {
 
   document.getElementById('targetBody').innerHTML = allocations.map(a => `
     <tr>
-      <td><span class="badge badge-${a.asset_type}">${TYPE_LABELS[a.asset_type] ?? a.asset_type}</span></td>
+      <td>${esc(a.category)}</td>
       <td class="text-right">
         <input type="number" class="allocation-input"
-               name="${a.asset_type}"
+               name="${esc(a.category)}"
                value="${a.target_percentage}"
                min="0" max="100" step="0.1"
                oninput="updateTotal()">
@@ -71,7 +66,7 @@ async function saveAllocations(event) {
 
   const data = [];
   document.querySelectorAll('.allocation-input').forEach(inp => {
-    data.push({ asset_type: inp.name, target_percentage: parseFloat(inp.value) || 0 });
+    data.push({ category: inp.name, target_percentage: parseFloat(inp.value) || 0 });
   });
 
   const res    = await fetch('/api/allocations', {
@@ -105,9 +100,9 @@ function renderRebalanceChart(recs) {
   if (rebalanceChart) rebalanceChart.destroy();
   if (!recs.length) return;
 
-  const labels      = recs.map(r => TYPE_LABELS[r.asset_type] ?? r.asset_type);
-  const colors      = recs.map(r => TYPE_COLORS[r.asset_type] ?? '#94a3b8');
-  const lightColors = colors.map(c => c + '55');  // semi-transparent fill for target bars
+  const labels      = recs.map(r => r.category);
+  const colors      = recs.map((_, i) => CATEGORY_COLORS[i % CATEGORY_COLORS.length]);
+  const lightColors = colors.map(c => c + '55');
 
   rebalanceChart = new Chart(ctx, {
     type: 'bar',
@@ -156,7 +151,7 @@ function renderRecommendations(recs) {
     const diffCls = r.difference > 1 ? 'text-success' : r.difference < -1 ? 'text-danger' : '';
     return `
     <tr>
-      <td><span class="badge badge-${r.asset_type}">${TYPE_LABELS[r.asset_type] ?? r.asset_type}</span></td>
+      <td>${esc(r.category)}</td>
       <td class="text-right">${fmt(r.current_value)}</td>
       <td class="text-right">${r.current_pct.toFixed(1)}%</td>
       <td class="text-right">${r.target_pct.toFixed(1)}%</td>

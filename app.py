@@ -76,24 +76,23 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS target_allocations (
             id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-            asset_type         TEXT    NOT NULL UNIQUE,
+            category           TEXT    NOT NULL UNIQUE,
             target_percentage  REAL    NOT NULL DEFAULT 0
         );
-
-        INSERT OR IGNORE INTO target_allocations (asset_type, target_percentage) VALUES
-            ('stock',       60),
-            ('bond',        30),
-            ('etf',          5),
-            ('mutual_fund',  5);
         """
     )
     conn.commit()
-    # Migrate existing databases
+    # Migrate existing databases: add category column to holdings if missing
     try:
         conn.execute("ALTER TABLE holdings ADD COLUMN category TEXT NOT NULL DEFAULT ''")
         conn.commit()
     except sqlite3.OperationalError:
         pass  # column already exists
+    # Migrate target_allocations: rename asset_type → category if needed
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(target_allocations)")]
+    if "asset_type" in cols and "category" not in cols:
+        conn.execute("ALTER TABLE target_allocations RENAME COLUMN asset_type TO category")
+        conn.commit()
     conn.close()
 
 
@@ -184,6 +183,10 @@ def add_holding():
     if missing:
         return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
 
+    if (data.get("ticker") or "").strip().upper() == "$$CASH":
+        data["category"]      = "Cash"
+        data["current_value"] = data.get("shares", 0)
+
     now = datetime.utcnow().isoformat()
     db = get_db()
     cur = db.execute(
@@ -223,6 +226,11 @@ def update_holding(hid):
     row = db.execute("SELECT * FROM holdings WHERE id = ?", (hid,)).fetchone()
     if not row:
         return jsonify({"error": "Not found"}), 404
+
+    ticker = (data.get("ticker") or row["ticker"]).strip().upper()
+    if ticker == "$$CASH":
+        data["category"]      = "Cash"
+        data["current_value"] = data.get("shares") if data.get("shares") is not None else row["shares"]
 
     now = datetime.utcnow().isoformat()
     db.execute(
@@ -335,15 +343,23 @@ def portfolio_summary():
 
 @app.route("/api/allocations", methods=["GET"])
 def get_allocations():
-    rows = get_db().execute(
-        "SELECT * FROM target_allocations ORDER BY asset_type"
+    db = get_db()
+    holding_cats = db.execute(
+        "SELECT DISTINCT COALESCE(NULLIF(category,''), 'Uncategorized') AS cat FROM holdings"
     ).fetchall()
-    return jsonify([dict(r) for r in rows])
+    targets = db.execute("SELECT * FROM target_allocations").fetchall()
+    target_map = {t["category"]: t["target_percentage"] for t in targets}
+    all_cats = set(r["cat"] for r in holding_cats) | set(target_map)
+    result = sorted(
+        [{"category": c, "target_percentage": target_map.get(c, 0)} for c in all_cats],
+        key=lambda x: x["category"],
+    )
+    return jsonify(result)
 
 
 @app.route("/api/allocations", methods=["PUT"])
 def update_allocations():
-    data = request.get_json()  # [{asset_type, target_percentage}, ...]
+    data = request.get_json()  # [{category, target_percentage}, ...]
     total = sum(float(item["target_percentage"]) for item in data)
     if abs(total - 100) > 0.01:
         return jsonify({"error": f"Allocations must sum to 100% (currently {total:.1f}%)"}), 400
@@ -351,10 +367,10 @@ def update_allocations():
     db = get_db()
     for item in data:
         db.execute(
-            """INSERT INTO target_allocations (asset_type, target_percentage)
+            """INSERT INTO target_allocations (category, target_percentage)
                VALUES (?, ?)
-               ON CONFLICT(asset_type) DO UPDATE SET target_percentage = excluded.target_percentage""",
-            (item["asset_type"], float(item["target_percentage"])),
+               ON CONFLICT(category) DO UPDATE SET target_percentage = excluded.target_percentage""",
+            (item["category"], float(item["target_percentage"])),
         )
     db.commit()
     return jsonify({"success": True})
@@ -373,35 +389,34 @@ def get_rebalance():
 
     current: dict[str, float] = {}
     for h in holdings:
-        current.setdefault(h["asset_type"], 0)
-        current[h["asset_type"]] += h["current_value"]
+        cat = h["category"] or "Uncategorized"
+        current.setdefault(cat, 0)
+        current[cat] += h["current_value"]
+
+    target_map = {t["category"]: t["target_percentage"] for t in targets}
+    all_cats = set(current) | set(target_map)
 
     recommendations = []
-    for t in targets:
-        atype = t["asset_type"]
-        target_pct = t["target_percentage"]
-        curr_val = current.get(atype, 0)
-        curr_pct = (curr_val / total_value * 100) if total_value else 0
+    for cat in all_cats:
+        target_pct = target_map.get(cat, 0)
+        curr_val   = current.get(cat, 0)
+        curr_pct   = (curr_val / total_value * 100) if total_value else 0
         target_val = total_value * target_pct / 100
-        diff = target_val - curr_val
-        recommendations.append(
-            {
-                "asset_type": atype,
-                "current_value": curr_val,
-                "current_pct": curr_pct,
-                "target_pct": target_pct,
-                "target_value": target_val,
-                "difference": diff,
-                "action": "Buy" if diff > 1 else "Sell" if diff < -1 else "Hold",
-            }
-        )
+        diff       = target_val - curr_val
+        recommendations.append({
+            "category":      cat,
+            "current_value": curr_val,
+            "current_pct":   curr_pct,
+            "target_pct":    target_pct,
+            "target_value":  target_val,
+            "difference":    diff,
+            "action":        "Buy" if diff > 1 else "Sell" if diff < -1 else "Hold",
+        })
 
-    return jsonify(
-        {
-            "total_value": total_value,
-            "recommendations": sorted(recommendations, key=lambda x: x["asset_type"]),
-        }
-    )
+    return jsonify({
+        "total_value":     total_value,
+        "recommendations": sorted(recommendations, key=lambda x: x["category"]),
+    })
 
 
 # ── API: Live prices ──────────────────────────────────────────────────────────
@@ -409,6 +424,8 @@ def get_rebalance():
 
 @app.route("/api/price/<ticker>")
 def get_price(ticker):
+    if ticker.upper() == "$$CASH":
+        return jsonify({"price": 1.0, "name": "Cash", "category": "Cash"})
     try:
         t = yf.Ticker(ticker.upper())
         price = t.fast_info.last_price
@@ -433,6 +450,13 @@ def refresh_prices():
     now = datetime.utcnow().isoformat()
 
     for h in holdings:
+        if h["ticker"].upper() == "$$CASH":
+            db.execute(
+                "UPDATE holdings SET current_value=shares, updated_at=? WHERE id=?",
+                (now, h["id"])
+            )
+            updated.append(h["ticker"])
+            continue
         try:
             t     = yf.Ticker(h["ticker"])
             price = t.fast_info.last_price

@@ -56,7 +56,7 @@
         <div class="form-group">
           <label for="ticker">Ticker Symbol</label>
           <div style="display:flex;gap:0.4rem;align-items:center">
-            <input type="text" id="ticker" placeholder="e.g., AAPL" maxlength="10" style="flex:1">
+            <input type="text" id="ticker" placeholder="e.g., AAPL" maxlength="10" style="flex:1;text-transform:uppercase">
             <button type="button" class="btn btn-sm btn-secondary" onclick="fetchPrice()">Fetch</button>
           </div>
           <small id="priceDisplay" style="color:var(--text-muted,#6c757d);display:none"></small>

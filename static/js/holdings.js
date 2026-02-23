@@ -92,7 +92,9 @@ function openModal(id = null) {
     title.textContent     = 'Add Holding';
     submitBtn.textContent = 'Add Holding';
     document.getElementById('holdingForm').reset();
-    document.getElementById('holdingId').value = '';
+    document.getElementById('holdingId').value    = '';
+    document.getElementById('assetType').value    = 'etf';
+    document.getElementById('purchaseDate').value = new Date().toISOString().slice(0, 10);
   }
 
   document.getElementById('modalOverlay').classList.add('open');

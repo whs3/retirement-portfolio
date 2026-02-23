@@ -201,6 +201,10 @@ function renderCategoryTable(categoryAllocation) {
   `).join('');
 }
 
+let holdingsGroups = [];
+let sortCol = 'ticker';
+let sortDir = 1;  // 1 = asc, -1 = desc
+
 async function loadHoldings() {
   const res      = await fetch('/api/holdings');
   const holdings = await res.json();
@@ -225,11 +229,41 @@ async function loadHoldings() {
     groups[key].current_value += h.current_value;
   }
 
-  tbody.innerHTML = Object.values(groups).map(g => {
-    const gain    = g.current_value - g.cost_basis;
-    const gainPct = g.cost_basis > 0 ? (gain / g.cost_basis * 100) : 0;
-    const cls     = gain >= 0 ? 'text-success' : 'text-danger';
-    const pps     = g.shares > 0 ? fmt(g.current_value / g.shares) : '—';
+  // Pre-compute derived sort fields
+  holdingsGroups = Object.values(groups).map(g => ({
+    ...g,
+    gain:    g.current_value - g.cost_basis,
+    gainPct: g.cost_basis > 0 ? (g.current_value - g.cost_basis) / g.cost_basis * 100 : 0,
+    pps:     g.shares > 0 ? g.current_value / g.shares : 0,
+  }));
+
+  renderHoldingsTable();
+}
+
+function sortHoldings(col) {
+  sortDir = col === sortCol ? -sortDir : 1;
+  sortCol = col;
+  renderHoldingsTable();
+}
+
+function renderHoldingsTable() {
+  const tbody = document.getElementById('holdingsBody');
+
+  const sorted = [...holdingsGroups].sort((a, b) => {
+    const av = a[sortCol] ?? '';
+    const bv = b[sortCol] ?? '';
+    if (typeof av === 'string') return av.localeCompare(bv) * sortDir;
+    return (av - bv) * sortDir;
+  });
+
+  // Update sort indicators
+  document.querySelectorAll('.sort-indicator').forEach(el => {
+    const col = el.dataset.col;
+    el.textContent = col === sortCol ? (sortDir === 1 ? ' ↑' : ' ↓') : '';
+  });
+
+  tbody.innerHTML = sorted.map(g => {
+    const cls = g.gain >= 0 ? 'text-success' : 'text-danger';
     return `
     <tr>
       <td><strong>${esc(g.ticker) || '—'}</strong></td>
@@ -237,11 +271,11 @@ async function loadHoldings() {
       <td><span class="badge badge-${g.asset_type}">${TYPE_LABELS[g.asset_type] ?? g.asset_type}</span></td>
       <td>${esc(g.category) || '—'}</td>
       <td class="text-right">${g.shares > 0 ? g.shares.toFixed(4) : '—'}</td>
-      <td class="text-right">${pps}</td>
+      <td class="text-right">${g.pps > 0 ? fmt(g.pps) : '—'}</td>
       <td class="text-right">${fmt(g.cost_basis)}</td>
       <td class="text-right">${fmt(g.current_value)}</td>
-      <td class="text-right ${cls}">${fmt(gain)}</td>
-      <td class="text-right ${cls}">${(gain >= 0 ? '+' : '')}${fmtPct(gainPct)}</td>
+      <td class="text-right ${cls}">${fmt(g.gain)}</td>
+      <td class="text-right ${cls}">${(g.gain >= 0 ? '+' : '')}${fmtPct(g.gainPct)}</td>
     </tr>`;
   }).join('');
 }

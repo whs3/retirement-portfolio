@@ -350,6 +350,14 @@ body {
 .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
 .alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
 
+/* ── Sortable table headers ──────────────────────────────────────────────── */
+.th-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.th-sortable:hover { color: var(--text); }
+.sort-indicator    { font-size: .65rem; color: var(--primary); }
+
 /* ── Holdings table tweaks ───────────────────────────────────────────────── */
 .table-holdings { font-size: .8rem; }
 

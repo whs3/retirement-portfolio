@@ -88,16 +88,16 @@
     <table class="table">
       <thead>
         <tr>
-          <th>Ticker</th>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Category</th>
-          <th class="text-right">Shares</th>
-          <th class="text-right">Price / Share</th>
-          <th class="text-right">Cost Basis</th>
-          <th class="text-right">Current Value</th>
-          <th class="text-right">Gain / Loss</th>
-          <th class="text-right">Return</th>
+          <th class="th-sortable" onclick="sortHoldings('ticker')">Ticker <span class="sort-indicator" data-col="ticker"></span></th>
+          <th class="th-sortable" onclick="sortHoldings('name')">Name <span class="sort-indicator" data-col="name"></span></th>
+          <th class="th-sortable" onclick="sortHoldings('asset_type')">Type <span class="sort-indicator" data-col="asset_type"></span></th>
+          <th class="th-sortable" onclick="sortHoldings('category')">Category <span class="sort-indicator" data-col="category"></span></th>
+          <th class="th-sortable text-right" onclick="sortHoldings('shares')">Shares <span class="sort-indicator" data-col="shares"></span></th>
+          <th class="th-sortable text-right" onclick="sortHoldings('pps')">Price / Share <span class="sort-indicator" data-col="pps"></span></th>
+          <th class="th-sortable text-right" onclick="sortHoldings('cost_basis')">Cost Basis <span class="sort-indicator" data-col="cost_basis"></span></th>
+          <th class="th-sortable text-right" onclick="sortHoldings('current_value')">Current Value <span class="sort-indicator" data-col="current_value"></span></th>
+          <th class="th-sortable text-right" onclick="sortHoldings('gain')">Gain / Loss <span class="sort-indicator" data-col="gain"></span></th>
+          <th class="th-sortable text-right" onclick="sortHoldings('gainPct')">Return <span class="sort-indicator" data-col="gainPct"></span></th>
         </tr>
       </thead>
       <tbody id="holdingsBody">

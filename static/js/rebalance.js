@@ -104,7 +104,7 @@ async function loadRebalance() {
   const res  = await fetch('/api/rebalance');
   const data = await res.json();
   renderRebalanceChart(data.recommendations);
-  renderRecommendations(data.recommendations);
+  renderRecommendations(data.recommendations, data.total_value);
 }
 
 function renderRebalanceChart(recs) {
@@ -153,7 +153,7 @@ function renderRebalanceChart(recs) {
   });
 }
 
-function renderRecommendations(recs) {
+function renderRecommendations(recs, totalValue) {
   const tbody = document.getElementById('recommendationsBody');
 
   if (!recs.length) {
@@ -162,15 +162,21 @@ function renderRecommendations(recs) {
   }
 
   tbody.innerHTML = recs.map(r => {
-    const diffCls = r.difference > 1 ? 'text-success' : r.difference < -1 ? 'text-danger' : '';
+    // Compute diff from the displayed (2-decimal) percentages so that
+    // matching displayed values always produce a $0.00 difference.
+    const dispCurrentPct = parseFloat(r.current_pct.toFixed(2));
+    const dispTargetPct  = parseFloat(r.target_pct.toFixed(2));
+    const diff           = totalValue * (dispTargetPct - dispCurrentPct) / 100;
+    const diffCls        = diff > 1 ? 'text-success' : diff < -1 ? 'text-danger' : '';
+    const targetVal      = totalValue * dispTargetPct / 100;
     return `
     <tr>
       <td>${esc(r.category)}</td>
       <td class="text-right">${fmt(r.current_value)}</td>
-      <td class="text-right">${r.current_pct.toFixed(2)}%</td>
-      <td class="text-right">${r.target_pct.toFixed(1)}%</td>
-      <td class="text-right">${fmt(r.target_value)}</td>
-      <td class="text-right ${diffCls}">${r.difference >= 0 ? '+' : ''}${fmt(r.difference)}</td>
+      <td class="text-right">${dispCurrentPct.toFixed(2)}%</td>
+      <td class="text-right">${dispTargetPct.toFixed(2)}%</td>
+      <td class="text-right">${fmt(targetVal)}</td>
+      <td class="text-right ${diffCls}">${diff >= 0 ? '+' : ''}${fmt(diff)}</td>
       <td class="text-center"><span class="badge badge-${r.action.toLowerCase()}">${r.action}</span></td>
     </tr>`;
   }).join('');

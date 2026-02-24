@@ -114,9 +114,7 @@ function renderRebalanceChart(recs) {
   if (rebalanceChart) rebalanceChart.destroy();
   if (!recs.length) return;
 
-  const labels      = recs.map(r => r.category);
-  const colors      = recs.map((_, i) => CATEGORY_COLORS[i % CATEGORY_COLORS.length]);
-  const lightColors = colors.map(c => c + '55');
+  const labels = recs.map(r => r.category);
 
   rebalanceChart = new Chart(ctx, {
     type: 'bar',
@@ -126,14 +124,14 @@ function renderRebalanceChart(recs) {
         {
           label:           'Current %',
           data:            recs.map(r => +r.current_pct.toFixed(2)),
-          backgroundColor: colors,
+          backgroundColor: '#2563eb',
           borderRadius:    4,
         },
         {
           label:           'Target %',
           data:            recs.map(r => r.target_pct),
-          backgroundColor: lightColors,
-          borderColor:     colors,
+          backgroundColor: 'rgba(148,163,184,0.35)',
+          borderColor:     '#64748b',
           borderWidth:     2,
           borderRadius:    4,
         },

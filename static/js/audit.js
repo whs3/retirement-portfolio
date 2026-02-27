@@ -1,9 +1,10 @@
 'use strict';
 
 const ACTION_CLASS = {
-  ADD:    'badge-buy',
-  EDIT:   'badge-hold',
-  DELETE: 'badge-sell',
+  ADD:          'badge-buy',
+  EDIT:         'badge-hold',
+  DELETE:       'badge-sell',
+  PRICE_UPDATE: 'badge-etf',
 };
 
 function fmtDollar(s) {
@@ -47,7 +48,7 @@ async function loadAuditLog() {
 
   const tbody = document.getElementById('auditBody');
   if (!entries.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No audit entries yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No audit entries yet.</td></tr>';
     return;
   }
 
@@ -55,6 +56,15 @@ async function loadAuditLog() {
     const f          = e.fields;
     const actionCls  = ACTION_CLASS[e.action] ?? 'badge-hold';
     const ticker     = e.ticker && e.ticker !== '—' ? esc(e.ticker) : '<span class="text-muted">—</span>';
+    const isPriceUpd = e.action === 'PRICE_UPDATE';
+
+    // PRICE_UPDATE logs: price, old_value, new_value
+    // ADD/EDIT/DELETE log: current_value, cost_basis, value_change, cost_basis_change
+    const currentVal  = isPriceUpd ? fmtDollar(f.new_value)   : fmtDollar(f.current_value);
+    const valueChange = isPriceUpd ? fmtChange(f.new_value && f.old_value
+                          ? String(parseFloat(f.new_value.replace('$','')) - parseFloat(f.old_value.replace('$','')))
+                          : null)
+                        : fmtChange(f.value_change);
 
     return `
     <tr>
@@ -62,9 +72,10 @@ async function loadAuditLog() {
       <td><span class="badge ${actionCls}">${esc(e.action)}</span></td>
       <td>${ticker}</td>
       <td>${esc(e.name)}</td>
-      <td class="text-right">${fmtDollar(f.current_value)}</td>
+      <td class="text-right">${fmtDollar(f.price)}</td>
+      <td class="text-right">${currentVal}</td>
       <td class="text-right">${fmtDollar(f.cost_basis)}</td>
-      <td class="text-right">${fmtChange(f.value_change)}</td>
+      <td class="text-right">${valueChange}</td>
       <td class="text-right">${fmtChange(f.cost_basis_change)}</td>
     </tr>`;
   }).join('');

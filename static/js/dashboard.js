@@ -5,6 +5,7 @@ const TYPE_LABELS = {
   bond:        'Bond',
   etf:         'ETF',
   mutual_fund: 'Mutual Fund',
+  cash:        'Cash',
 };
 
 const TYPE_COLORS = {

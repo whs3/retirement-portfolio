@@ -41,6 +41,7 @@ function sortHoldings(col) {
 
 function renderTable() {
   const tbody = document.getElementById('holdingsBody');
+  const query = (document.getElementById('holdingsSearch')?.value ?? '').trim().toLowerCase();
 
   if (!holdings.length) {
     tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted" style="padding:2rem">
@@ -63,12 +64,26 @@ function renderTable() {
     return (av - bv) * sortDir;
   });
 
+  const filtered = query
+    ? rows.filter(h =>
+        (h.name          ?? '').toLowerCase().includes(query) ||
+        (h.ticker        ?? '').toLowerCase().includes(query) ||
+        (h.purchase_date ?? '').toLowerCase().includes(query)
+      )
+    : rows;
+
   // Update sort indicators
   document.querySelectorAll('.sort-indicator').forEach(el => {
     el.textContent = el.dataset.col === sortCol ? (sortDir === 1 ? ' ↑' : ' ↓') : '';
   });
 
-  tbody.innerHTML = rows.map(h => {
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted" style="padding:2rem">
+      No holdings match your search.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(h => {
     const cls   = h.gain >= 0 ? 'text-success' : 'text-danger';
     const notes = h.notes ? `<br><small class="text-muted">${esc(h.notes)}</small>` : '';
     return `
@@ -266,6 +281,7 @@ function recalcCurrentValue() {
 
 document.addEventListener('DOMContentLoaded', () => {
   loadHoldings();
+  document.getElementById('holdingsSearch').addEventListener('input', renderTable);
   document.getElementById('shares').addEventListener('input', recalcCurrentValue);
   document.getElementById('ticker').addEventListener('input', () => {
     if (document.getElementById('ticker').value.toUpperCase() === '$$CASH') {

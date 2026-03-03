@@ -31,35 +31,34 @@ function esc(s) {
 
 let pollTimer      = null;
 let lastEntryCount = -1;
+let auditEntries   = [];
 
-async function loadAuditLog() {
-  const res     = await fetch('/api/audit');
-  const entries = await res.json();
+function renderAuditTable() {
+  const query = (document.getElementById('auditSearch')?.value ?? '').trim().toLowerCase();
+  const tbody  = document.getElementById('auditBody');
 
-  // Update count + "last refreshed" indicator
-  document.getElementById('entryCount').textContent =
-    entries.length === 1 ? '1 entry' : `${entries.length} entries`;
-  document.getElementById('lastRefreshed').textContent =
-    'Refreshed ' + new Date().toLocaleTimeString();
+  const filtered = query
+    ? auditEntries.filter(e =>
+        (e.timestamp ?? '').toLowerCase().includes(query) ||
+        (e.action    ?? '').toLowerCase().includes(query) ||
+        (e.ticker    ?? '').toLowerCase().includes(query) ||
+        (e.name      ?? '').toLowerCase().includes(query)
+      )
+    : auditEntries;
 
-  // Skip re-rendering the table if nothing has changed
-  if (entries.length === lastEntryCount) return;
-  lastEntryCount = entries.length;
-
-  const tbody = document.getElementById('auditBody');
-  if (!entries.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No audit entries yet.</td></tr>';
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">${
+      query ? 'No entries match your search.' : 'No audit entries yet.'
+    }</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = entries.map(e => {
+  tbody.innerHTML = filtered.map(e => {
     const f          = e.fields;
     const actionCls  = ACTION_CLASS[e.action] ?? 'badge-hold';
     const ticker     = e.ticker && e.ticker !== '—' ? esc(e.ticker) : '<span class="text-muted">—</span>';
     const isPriceUpd = e.action === 'PRICE_UPDATE';
 
-    // PRICE_UPDATE logs: price, old_value, new_value
-    // ADD/EDIT/DELETE log: current_value, cost_basis, value_change, cost_basis_change
     const currentVal  = isPriceUpd ? fmtDollar(f.new_value)   : fmtDollar(f.current_value);
     const valueChange = isPriceUpd ? fmtChange(f.new_value && f.old_value
                           ? String(parseFloat(f.new_value.replace('$','')) - parseFloat(f.old_value.replace('$','')))
@@ -81,6 +80,23 @@ async function loadAuditLog() {
   }).join('');
 }
 
+async function loadAuditLog() {
+  const res     = await fetch('/api/audit');
+  const entries = await res.json();
+
+  document.getElementById('entryCount').textContent =
+    entries.length === 1 ? '1 entry' : `${entries.length} entries`;
+  document.getElementById('lastRefreshed').textContent =
+    'Refreshed ' + new Date().toLocaleTimeString();
+
+  // Skip re-rendering if nothing has changed
+  if (entries.length === lastEntryCount) return;
+  lastEntryCount = entries.length;
+  auditEntries   = entries;
+
+  renderAuditTable();
+}
+
 function applyPollInterval() {
   const ms = parseInt(document.getElementById('pollInterval').value, 10);
   clearInterval(pollTimer);
@@ -91,4 +107,5 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAuditLog();
   applyPollInterval();
   document.getElementById('pollInterval').addEventListener('change', applyPollInterval);
+  document.getElementById('auditSearch').addEventListener('input', renderAuditTable);
 });

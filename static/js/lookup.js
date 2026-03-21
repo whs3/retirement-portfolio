@@ -33,7 +33,7 @@ async function loadMarketIndices() {
       const isUp = data.change >= 0;
       const sign = isUp ? '+' : '';
       document.getElementById(`indexStats_${i}`).innerHTML = `
-        <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${s.label}</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${esc(s.label)}</div>
         <div style="font-size:1.4rem;font-weight:700;color:${s.color}">${fmtPrice(data.current_price)}</div>
         <div style="font-size:0.9rem;font-weight:600" class="${isUp ? 'text-success' : 'text-danger'}">${sign}${fmtPrice(data.change)} (${sign}${data.change_pct.toFixed(2)}%)</div>`;
     });

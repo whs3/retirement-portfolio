@@ -51,7 +51,8 @@ async function loadPerformance() {
 
     if (data.untracked && data.untracked.length) {
       const msg = document.getElementById('untrackedMsg');
-      msg.innerHTML = `<strong>Note:</strong> The following tickers had no price history and are included at their current value: ${data.untracked.map(t => `<strong>${t}</strong>`).join(', ')}.`;
+      const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      msg.innerHTML = `<strong>Note:</strong> The following tickers had no price history and are included at their current value: ${data.untracked.map(t => `<strong>${esc(t)}</strong>`).join(', ')}.`;
       document.getElementById('untrackedNotice').style.display = 'block';
     }
 

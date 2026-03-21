@@ -1,4 +1,6 @@
 Flask>=3.0.0
+flask-wtf>=1.2
+flask-limiter>=3.5
 yfinance
 requests
 openpyxl

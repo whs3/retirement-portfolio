@@ -3,9 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}Retirement Portfolio Tracker{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    // Attach CSRF token to all state-changing fetch requests automatically
+    (function () {
+      const token = document.querySelector('meta[name="csrf-token"]').content;
+      const _fetch = window.fetch;
+      window.fetch = (url, opts = {}) => {
+        const method = (opts.method || 'GET').toUpperCase();
+        if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+          opts.headers = Object.assign({ 'X-CSRFToken': token }, opts.headers || {});
+        }
+        return _fetch(url, opts);
+      };
+    })();
+  </script>
 </head>
 <body>
 

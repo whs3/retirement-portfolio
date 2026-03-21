@@ -1,16 +1,28 @@
 import csv
 import io
 import logging
+import math
+import os
+import re
+import secrets
 import sqlite3
 from datetime import datetime, timedelta
 
 import requests
 import yfinance as yf
-from flask import Flask, g, jsonify, render_template, request, send_file
+from flask import Flask, abort, g, jsonify, render_template, request, send_file
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
 
 app = Flask(__name__)
 app.config["DATABASE"] = "portfolio.db"
 app.config["AUDIT_LOG"] = "portfolio_audit.log"
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or secrets.token_hex(32)
+app.config["WTF_CSRF_HEADERS"] = ["X-CSRFToken"]
+
+csrf    = CSRFProtect(app)
+limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")
 
 # ── Audit logger ──────────────────────────────────────────────────────────────
 
@@ -37,6 +49,41 @@ def audit(action: str, ticker: str, name: str, **fields):
         for k, v in fields.items()
     )
     _audit_logger.info("%-6s | %s | %s | %s", action, ticker_col, name, kv)
+
+
+_app_logger = logging.getLogger("portfolio.app")
+
+# ── Security: localhost-only + hardened headers ───────────────────────────────
+
+@app.before_request
+def localhost_only():
+    if request.remote_addr not in ("127.0.0.1", "::1"):
+        abort(403)
+
+
+@app.after_request
+def security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    return response
+
+
+# ── Input helpers ─────────────────────────────────────────────────────────────
+
+_VALID_TICKER = re.compile(r"^[\w.\-\^]{1,20}$")
+
+
+def _parse_positive_float(value, field_name: str) -> float:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be a number")
+    if math.isnan(n) or math.isinf(n):
+        raise ValueError(f"{field_name} is not a valid number")
+    if n < 0:
+        raise ValueError(f"{field_name} cannot be negative")
+    return n
 
 
 # ── Database helpers ──────────────────────────────────────────────────────────
@@ -209,9 +256,16 @@ def add_holding():
     if missing:
         return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
 
+    try:
+        shares      = _parse_positive_float(data.get("shares") or 0, "Shares")
+        cost_basis  = _parse_positive_float(data["cost_basis"], "Cost Basis")
+        current_val = _parse_positive_float(data["current_value"], "Current Value")
+    except (ValueError, KeyError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
     if (data.get("ticker") or "").strip().upper() == "$$CASH":
-        data["category"]      = "Cash"
-        data["current_value"] = data.get("shares", 0)
+        data["category"] = "Cash"
+        current_val      = shares
 
     now = datetime.utcnow().isoformat()
     db = get_db()
@@ -225,9 +279,9 @@ def add_holding():
             (data.get("ticker") or "").strip().upper(),
             data["asset_type"],
             (data.get("category") or "").strip(),
-            float(data.get("shares") or 0),
-            float(data["cost_basis"]),
-            float(data["current_value"]),
+            shares,
+            cost_basis,
+            current_val,
             data.get("purchase_date") or "",
             (data.get("notes") or "").strip(),
             now,
@@ -239,8 +293,8 @@ def add_holding():
         "ADD",
         (data.get("ticker") or "").strip().upper(),
         data["name"].strip(),
-        current_value=float(data["current_value"]),
-        cost_basis=float(data["cost_basis"]),
+        current_value=current_val,
+        cost_basis=cost_basis,
     )
     return jsonify({"id": cur.lastrowid, "success": True}), 201
 
@@ -254,9 +308,20 @@ def update_holding(hid):
         return jsonify({"error": "Not found"}), 404
 
     ticker = (data.get("ticker") or row["ticker"]).strip().upper()
+
+    try:
+        new_shares = _parse_positive_float(
+            data["shares"] if data.get("shares") is not None else row["shares"], "Shares")
+        new_cost   = _parse_positive_float(
+            data["cost_basis"] if data.get("cost_basis") is not None else row["cost_basis"], "Cost Basis")
+        new_value  = _parse_positive_float(
+            data["current_value"] if data.get("current_value") is not None else row["current_value"], "Current Value")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
     if ticker == "$$CASH":
-        data["category"]      = "Cash"
-        data["current_value"] = data.get("shares") if data.get("shares") is not None else row["shares"]
+        data["category"] = "Cash"
+        new_value        = new_shares
 
     now = datetime.utcnow().isoformat()
     db.execute(
@@ -266,12 +331,12 @@ def update_holding(hid):
            WHERE id=?""",
         (
             (data.get("name") or row["name"]).strip(),
-            (data.get("ticker") or row["ticker"]).strip().upper(),
+            ticker,
             data.get("asset_type") or row["asset_type"],
             (data.get("category") if data.get("category") is not None else row["category"]).strip(),
-            float(data.get("shares") if data.get("shares") is not None else row["shares"]),
-            float(data.get("cost_basis") if data.get("cost_basis") is not None else row["cost_basis"]),
-            float(data.get("current_value") if data.get("current_value") is not None else row["current_value"]),
+            new_shares,
+            new_cost,
+            new_value,
             data.get("purchase_date") or row["purchase_date"],
             (data.get("notes") or row["notes"]).strip(),
             now,
@@ -279,8 +344,6 @@ def update_holding(hid):
         ),
     )
     db.commit()
-    new_value = float(data.get("current_value") if data.get("current_value") is not None else row["current_value"])
-    new_cost  = float(data.get("cost_basis")    if data.get("cost_basis")    is not None else row["cost_basis"])
     audit(
         "EDIT",
         (data.get("ticker") or row["ticker"]).strip().upper(),
@@ -450,22 +513,27 @@ def get_rebalance():
 
 @app.route("/api/price/<ticker>")
 def get_price(ticker):
-    if ticker.upper() == "$$CASH":
+    symbol = ticker.strip().upper()
+    if symbol == "$$CASH":
         return jsonify({"price": 1.0, "name": "Cash", "category": "Cash"})
+    if not _VALID_TICKER.match(symbol):
+        return jsonify({"error": "Invalid ticker format"}), 400
     try:
-        t = yf.Ticker(ticker.upper())
+        t = yf.Ticker(symbol)
         price = t.fast_info.last_price
         if price is None:
             return jsonify({"error": "Price unavailable"}), 404
-        info = t.info
+        info     = t.info
         name     = info.get("longName") or info.get("shortName")
         category = info.get("category") or info.get("sector") or ""
-        return jsonify({"ticker": ticker.upper(), "price": price, "name": name, "category": category})
-    except Exception:
-        return jsonify({"error": f"Ticker '{ticker.upper()}' not found or data unavailable"}), 502
+        return jsonify({"ticker": symbol, "price": price, "name": name, "category": category})
+    except Exception as exc:
+        _app_logger.error("get_price %s: %s", symbol, exc)
+        return jsonify({"error": f"Ticker '{symbol}' not found or data unavailable"}), 502
 
 
 @app.route("/api/holdings/refresh-prices", methods=["POST"])
+@limiter.limit("10 per minute")
 def refresh_prices():
     db = get_db()
     holdings = db.execute(
@@ -499,8 +567,9 @@ def refresh_prices():
             audit("PRICE_UPDATE", h["ticker"], h["name"],
                   old_value=h["current_value"], new_value=new_value, price=price)
             updated.append({"ticker": h["ticker"], "price": price, "new_value": new_value, "category": category})
-        except Exception as e:
-            errors.append({"ticker": h["ticker"], "error": str(e)})
+        except Exception as exc:
+            _app_logger.error("refresh_prices %s: %s", h["ticker"], exc)
+            errors.append({"ticker": h["ticker"], "error": "Unable to fetch price data"})
 
     db.commit()
     return jsonify({"updated": updated, "skipped": skipped, "errors": errors})
@@ -520,15 +589,23 @@ def get_settings():
     return jsonify(result)
 
 
+_ALLOWED_SETTINGS = {"fmp_api_key"}
+
+
 @app.route("/api/settings", methods=["PUT"])
 def update_settings():
     data = request.get_json()
     db = get_db()
     for key, value in data.items():
+        if key not in _ALLOWED_SETTINGS:
+            return jsonify({"error": f"Unknown setting: {key}"}), 400
+        if not isinstance(value, str):
+            return jsonify({"error": f"Invalid value for {key}"}), 400
         db.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (key, value),
         )
+        audit("SETTING_UPDATE", "", "", key=key)
     db.commit()
     return jsonify({"success": True})
 
@@ -597,6 +674,9 @@ def _get_etf_holdings_vanguard(ticker: str) -> list[dict]:
     return all_holdings
 
 
+_MAX_XLSX_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 def _get_etf_holdings_ssga(ticker: str) -> list[dict]:
     """Fetch complete holdings from State Street SSGA (XLSX download)."""
     import openpyxl
@@ -605,11 +685,16 @@ def _get_etf_holdings_ssga(ticker: str) -> list[dict]:
     resp = requests.get(url, headers=_HEADERS, timeout=20)
     if resp.status_code != 200:
         raise ValueError(f"SSGA returned {resp.status_code} for {ticker}")
+    if len(resp.content) > _MAX_XLSX_BYTES:
+        raise ValueError(f"SSGA file for {ticker} exceeds size limit")
 
     wb   = openpyxl.load_workbook(io.BytesIO(resp.content), read_only=True, data_only=True)
     rows = list(wb.active.iter_rows(values_only=True))
     # Row 5 (index 4) = column headers; rows 6+ = data
-    hdr        = list(rows[4])
+    hdr = list(rows[4])
+    for col in ("Name", "Ticker", "Weight"):
+        if col not in hdr:
+            raise ValueError(f"SSGA file for {ticker} missing expected column: {col}")
     name_idx   = hdr.index("Name")
     ticker_idx = hdr.index("Ticker")
     weight_idx = hdr.index("Weight")
@@ -745,6 +830,7 @@ def _get_etf_holdings(ticker: str, fmp_api_key: str) -> tuple[list[dict], str]:
 
 
 @app.route("/api/overlap")
+@limiter.limit("10 per hour")
 def get_overlap():
     """
     Break every holding down to its underlying individual stocks and accumulate
@@ -822,7 +908,8 @@ def get_overlap():
                     })
 
             except Exception as exc:
-                errors.append({"ticker": ticker, "error": str(exc)})
+                _app_logger.error("overlap %s: %s", ticker, exc)
+                errors.append({"ticker": ticker, "error": "Unable to fetch holdings data"})
                 bond_fi_value += total_value
 
         elif asset_type == "bond":
@@ -856,6 +943,7 @@ def get_overlap():
 
 
 @app.route("/api/performance")
+@limiter.limit("10 per hour")
 def get_performance():
     """
     Return daily portfolio values for the past 12 months calculated as
@@ -986,6 +1074,8 @@ def get_performance():
 @app.route("/api/lookup/<ticker>")
 def lookup_ticker(ticker):
     symbol = ticker.strip().upper()
+    if not _VALID_TICKER.match(symbol):
+        return jsonify({"error": "Invalid ticker format"}), 400
     try:
         t    = yf.Ticker(symbol)
         hist = t.history(period="1y")
@@ -1044,7 +1134,8 @@ def lookup_ticker(ticker):
             "top_holdings":  top_holdings,
         })
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 502
+        _app_logger.error("lookup_ticker %s: %s", symbol, exc)
+        return jsonify({"error": f"Unable to fetch data for '{symbol}'"}), 502
 
 
 # ── API: CSV export ───────────────────────────────────────────────────────────
@@ -1094,4 +1185,4 @@ def export_csv():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="127.0.0.1", debug=os.getenv("FLASK_ENV") == "development")

@@ -2,8 +2,9 @@ import csv
 import io
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
+import requests
 import yfinance as yf
 from flask import Flask, g, jsonify, render_template, request, send_file
 
@@ -93,6 +94,16 @@ def init_db():
     if "asset_type" in cols and "category" not in cols:
         conn.execute("ALTER TABLE target_allocations RENAME COLUMN asset_type TO category")
         conn.commit()
+    # Settings table (key-value store for user configuration)
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        );
+        """
+    )
+    conn.commit()
     conn.close()
 
 
@@ -122,6 +133,21 @@ def rebalance_page():
 @app.route("/audit")
 def audit_page():
     return render_template("audit.html")
+
+
+@app.route("/overlap")
+def overlap_page():
+    return render_template("overlap.html")
+
+
+@app.route("/performance")
+def performance_page():
+    return render_template("performance.html")
+
+
+@app.route("/lookup")
+def lookup_page():
+    return render_template("lookup.html")
 
 
 # ── API: Audit log ───────────────────────────────────────────────────────────
@@ -478,6 +504,547 @@ def refresh_prices():
 
     db.commit()
     return jsonify({"updated": updated, "skipped": skipped, "errors": errors})
+
+
+# ── API: Settings ────────────────────────────────────────────────────────────
+
+
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
+    rows = get_db().execute("SELECT key, value FROM settings").fetchall()
+    result = {r["key"]: r["value"] for r in rows}
+    # Mask the API key in responses — return only whether it's set
+    if "fmp_api_key" in result:
+        result["fmp_api_key_set"] = bool(result["fmp_api_key"])
+        del result["fmp_api_key"]
+    return jsonify(result)
+
+
+@app.route("/api/settings", methods=["PUT"])
+def update_settings():
+    data = request.get_json()
+    db = get_db()
+    for key, value in data.items():
+        db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+    db.commit()
+    return jsonify({"success": True})
+
+
+def _get_fmp_api_key() -> str:
+    row = get_db().execute(
+        "SELECT value FROM settings WHERE key='fmp_api_key'"
+    ).fetchone()
+    return row["value"] if row else ""
+
+
+# ── Known bond ETF tickers (no equity holdings — route straight to Bond/FI) ───
+
+_BOND_ETF_TICKERS = frozenset({
+    "BND", "BNDX", "BNDW", "VGSH", "VGIT", "VGLT", "VMBS", "VTIP", "VTES",
+    "SPAB", "SPSB", "SPIB", "SPLB", "SPTI", "SPTL",
+    "AGG", "SHY", "IEF", "TLT", "LQD", "HYG", "JNK", "MUB", "TIP",
+    "SCHZ", "SCHI",
+})
+
+# ── Ticker → provider map for known ETFs ─────────────────────────────────────
+
+_TICKER_PROVIDER: dict[str, str] = {
+    # Vanguard equity
+    "VTI": "vanguard", "VOO": "vanguard", "VTV": "vanguard", "VIG": "vanguard",
+    "VUG": "vanguard", "VYM": "vanguard", "VGT": "vanguard", "VEA": "vanguard",
+    "VWO": "vanguard", "VXUS": "vanguard", "MGK": "vanguard", "MGV": "vanguard",
+    "VB":  "vanguard", "VO":  "vanguard",  "VV": "vanguard",
+    # State Street (SSGA) equity
+    "SPY": "ssga", "SPDW": "ssga", "SPEM": "ssga", "SPLG": "ssga",
+    # Invesco
+    "QQQ": "invesco", "QQQM": "invesco",
+}
+
+# ── Provider fetchers ─────────────────────────────────────────────────────────
+
+_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
+
+def _get_etf_holdings_vanguard(ticker: str) -> list[dict]:
+    """Fetch complete holdings from Vanguard's investor API (JSON, paginated)."""
+    all_holdings: list[dict] = []
+    start, page_size = 0, 1000
+    url = (f"https://investor.vanguard.com/investment-products/etfs"
+           f"/profile/api/{ticker}/portfolio-holding/stock")
+    while True:
+        resp = requests.get(
+            url, params={"start": start, "count": page_size},
+            headers=_HEADERS, timeout=15,
+        )
+        if resp.status_code != 200:
+            raise ValueError(f"Vanguard API returned {resp.status_code} for {ticker}")
+        entities = resp.json().get("fund", {}).get("entity", [])
+        for h in entities:
+            if h.get("ticker") and h.get("percentWeight") is not None:
+                all_holdings.append({
+                    "symbol": str(h["ticker"]),
+                    "name":   h.get("longName", h["ticker"]),
+                    "weight": float(h["percentWeight"]) / 100,
+                })
+        if len(entities) < page_size:
+            break
+        start += page_size
+    if not all_holdings:
+        raise ValueError(f"No equity holdings from Vanguard for {ticker}")
+    return all_holdings
+
+
+def _get_etf_holdings_ssga(ticker: str) -> list[dict]:
+    """Fetch complete holdings from State Street SSGA (XLSX download)."""
+    import openpyxl
+    url = (f"https://www.ssga.com/us/en/intermediary/etfs/library-content"
+           f"/products/fund-data/etfs/us/holdings-daily-us-en-{ticker.lower()}.xlsx")
+    resp = requests.get(url, headers=_HEADERS, timeout=20)
+    if resp.status_code != 200:
+        raise ValueError(f"SSGA returned {resp.status_code} for {ticker}")
+
+    wb   = openpyxl.load_workbook(io.BytesIO(resp.content), read_only=True, data_only=True)
+    rows = list(wb.active.iter_rows(values_only=True))
+    # Row 5 (index 4) = column headers; rows 6+ = data
+    hdr        = list(rows[4])
+    name_idx   = hdr.index("Name")
+    ticker_idx = hdr.index("Ticker")
+    weight_idx = hdr.index("Weight")
+
+    result = []
+    for row in rows[5:]:
+        sym = row[ticker_idx]
+        wt  = row[weight_idx]
+        if sym and wt is not None:
+            try:
+                result.append({
+                    "symbol": str(sym).strip(),
+                    "name":   str(row[name_idx]).strip() if row[name_idx] else str(sym),
+                    "weight": float(wt) / 100,
+                })
+            except (ValueError, TypeError):
+                pass
+    if not result:
+        raise ValueError(f"No equity holdings from SSGA for {ticker}")
+    return result
+
+
+def _get_etf_holdings_invesco(ticker: str) -> list[dict]:
+    """Fetch complete holdings from Invesco's API (JSON)."""
+    url  = (f"https://dng-api.invesco.com/cache/v1/accounts/en_US"
+            f"/shareclasses/{ticker}/holdings/fund")
+    resp = requests.get(
+        url,
+        params={"idType": "ticker", "interval": "monthly", "productType": "ETF"},
+        headers=_HEADERS, timeout=15,
+    )
+    if resp.status_code != 200:
+        raise ValueError(f"Invesco API returned {resp.status_code} for {ticker}")
+    holdings = resp.json().get("holdings", [])
+    if not holdings:
+        raise ValueError(f"No holdings from Invesco for {ticker}")
+    return [
+        {
+            "symbol": h["ticker"],
+            "name":   h.get("issuerName", h["ticker"]),
+            "weight": float(h["percentageOfTotalNetAssets"]) / 100,
+        }
+        for h in holdings
+        if h.get("ticker") and h.get("percentageOfTotalNetAssets") is not None
+    ]
+
+
+_PROVIDER_FETCHERS = {
+    "vanguard": _get_etf_holdings_vanguard,
+    "ssga":     _get_etf_holdings_ssga,
+    "invesco":  _get_etf_holdings_invesco,
+}
+
+_SOURCE_LABELS = {
+    "vanguard": "Vanguard",
+    "ssga":     "State Street",
+    "invesco":  "Invesco",
+    "fmp":      "FMP",
+    "yfinance": "yfinance",
+}
+
+# ── FMP fetcher ───────────────────────────────────────────────────────────────
+
+def _get_etf_holdings_fmp(ticker: str, api_key: str) -> list[dict]:
+    """Fetch full ETF holdings from Financial Modeling Prep (stable endpoint).
+
+    Returns list of {symbol, name, weight} where weight is a decimal (0–1).
+    Raises on any failure so the caller can fall back to yfinance.
+    """
+    url  = "https://financialmodelingprep.com/stable/etf/holdings"
+    resp = requests.get(url, params={"symbol": ticker, "apikey": api_key}, timeout=10)
+    if resp.status_code == 402:
+        raise ValueError("FMP plan does not include ETF holdings (paid feature)")
+    resp.raise_for_status()
+    data = resp.json()
+    if not data or isinstance(data, dict):   # error response is a dict
+        raise ValueError(data.get("Error Message", "Empty response from FMP"))
+    # weightPercentage may be a true percentage (7.12) or decimal (0.0712) depending on plan
+    sample_weight = float(data[0].get("weightPercentage") or 0)
+    scale = 100.0 if sample_weight > 1.0 else 1.0
+    return [
+        {
+            "symbol": item["asset"],
+            "name":   item.get("name", item["asset"]),
+            "weight": float(item.get("weightPercentage") or 0) / scale,
+        }
+        for item in data
+        if item.get("asset") and item.get("weightPercentage") is not None
+    ]
+
+
+def _get_etf_holdings_yfinance(ticker: str) -> list[dict]:
+    """Fetch top ETF holdings from yfinance.
+
+    Returns list of {symbol, name, weight} where weight is a decimal (0–1).
+    Raises on any failure.
+    """
+    top = yf.Ticker(ticker).funds_data.top_holdings
+    if top is None or top.empty:
+        raise ValueError("No top-holdings data returned")
+    return [
+        {
+            "symbol": str(symbol),
+            "name":   str(row["Name"]),
+            "weight": float(row["Holding Percent"]),
+        }
+        for symbol, row in top.iterrows()
+    ]
+
+
+def _get_etf_holdings(ticker: str, fmp_api_key: str) -> tuple[list[dict], str]:
+    """Return (holdings, source).
+
+    Priority:
+      1. Known provider (Vanguard / SSGA / Invesco) — full holdings, free
+      2. FMP — full holdings if paid key present
+      3. yfinance — top-N holdings fallback
+    """
+    provider = _TICKER_PROVIDER.get(ticker)
+    if provider:
+        return _PROVIDER_FETCHERS[provider](ticker), provider
+
+    if fmp_api_key:
+        try:
+            return _get_etf_holdings_fmp(ticker, fmp_api_key), "fmp"
+        except Exception:
+            pass
+
+    return _get_etf_holdings_yfinance(ticker), "yfinance"
+
+
+# ── API: Stock overlap ────────────────────────────────────────────────────────
+
+
+@app.route("/api/overlap")
+def get_overlap():
+    """
+    Break every holding down to its underlying individual stocks and accumulate
+    the dollar value of each stock across the whole portfolio.
+
+    - stock       → counted at full current_value
+    - etf / mutual_fund → top holdings fetched via yfinance; remainder bucketed
+                          as "Other Holdings"
+    - bond        → counted as-is under "Bond: <name>"
+    - cash        → excluded
+    """
+    holdings_rows = get_db().execute("SELECT * FROM holdings").fetchall()
+
+    # Summarise by ticker (same approach as the dashboard) so we only call
+    # yfinance once per unique ticker regardless of how many rows share it.
+    summarised: dict[str, dict] = {}   # ticker/key → {name, asset_type, value}
+    for h in holdings_rows:
+        if h["asset_type"] == "cash":
+            continue
+        key = (h["ticker"] or h["name"]).upper()
+        if key not in summarised:
+            summarised[key] = {
+                "name":       h["name"],
+                "asset_type": h["asset_type"],
+                "value":      0.0,
+            }
+        summarised[key]["value"] += h["current_value"]
+
+    fmp_api_key = _get_fmp_api_key()
+
+    stock_totals: dict[str, dict] = {}   # key → {name, value}
+    other_value = 0.0
+    other_breakdown: list[dict] = []    # per-ETF contributions to Other Holdings
+    bond_fi_value = 0.0
+    errors = []
+
+    def _add(key: str, name: str, value: float):
+        if key not in stock_totals:
+            stock_totals[key] = {"name": name, "value": 0.0}
+        stock_totals[key]["value"] += value
+
+    for ticker, info in summarised.items():
+        asset_type = info["asset_type"]
+        total_value = info["value"]
+
+        if asset_type == "stock":
+            _add(ticker, info["name"], total_value)
+
+        elif asset_type in ("etf", "mutual_fund"):
+            # Known bond ETFs have no equity holdings — bucket silently
+            if ticker in _BOND_ETF_TICKERS:
+                bond_fi_value += total_value
+                continue
+
+            try:
+                holdings, source = _get_etf_holdings(ticker, fmp_api_key)
+
+                total_pct = 0.0
+                for h in holdings:
+                    total_pct += h["weight"]
+                    _add(h["symbol"], h["name"], total_value * h["weight"])
+
+                # Portion not represented in returned holdings
+                remaining = max(0.0, 1.0 - total_pct)
+                remainder_value = total_value * remaining
+                other_value += remainder_value
+                if remainder_value > 0.01:
+                    other_breakdown.append({
+                        "ticker":      ticker,
+                        "name":        info["name"],
+                        "covered_pct": round(total_pct * 100, 1),
+                        "other_pct":   round(remaining * 100, 1),
+                        "other_value": round(remainder_value, 2),
+                        "source":      _SOURCE_LABELS.get(source, source),
+                    })
+
+            except Exception as exc:
+                errors.append({"ticker": ticker, "error": str(exc)})
+                bond_fi_value += total_value
+
+        elif asset_type == "bond":
+            bond_fi_value += total_value
+
+    if bond_fi_value > 0.01:
+        _add("__BOND_FI__", "Bond / Fixed Income", bond_fi_value)
+    if other_value > 0.01:
+        _add("__OTHER__", "Other Holdings", other_value)
+
+    result = [
+        {"ticker": k, "name": v["name"], "value": round(v["value"], 2)}
+        for k, v in stock_totals.items()
+    ]
+    result.sort(key=lambda x: x["value"], reverse=True)
+
+    total = sum(r["value"] for r in result)
+    for r in result:
+        r["percentage"] = round((r["value"] / total * 100) if total else 0, 2)
+
+    other_breakdown.sort(key=lambda x: x["other_value"], reverse=True)
+    return jsonify({
+        "stocks":          result,
+        "total":           round(total, 2),
+        "errors":          errors,
+        "other_breakdown": other_breakdown,
+    })
+
+
+# ── API: Performance (12-month growth) ───────────────────────────────────────
+
+
+@app.route("/api/performance")
+def get_performance():
+    """
+    Return daily portfolio values for the past 12 months calculated as
+    current shares × historical closing prices.
+
+    Holdings without a ticker (or whose history can't be fetched) are included
+    as a constant contribution equal to their current_value.
+    """
+    import pandas as pd
+
+    holdings_rows = get_db().execute("SELECT * FROM holdings").fetchall()
+
+    # DB total matches the dashboard exactly
+    db_total = sum(h["current_value"] for h in holdings_rows)
+
+    # Sum shares by ticker; accumulate untickered value as constant
+    shares_by_ticker: dict[str, float] = {}
+    constant_value = 0.0
+
+    for h in holdings_rows:
+        ticker = (h["ticker"] or "").strip().upper()
+        if not ticker or ticker == "$$CASH":
+            constant_value += h["current_value"]
+            continue
+        shares_by_ticker[ticker] = shares_by_ticker.get(ticker, 0.0) + h["shares"]
+
+    end_dt   = datetime.now()
+    start_dt = end_dt - timedelta(days=375)   # a little extra so we can trim to 365
+
+    if not shares_by_ticker:
+        return jsonify({
+            "dates": [], "values": [], "summary": {},
+            "untracked": [], "untracked_value": round(constant_value, 2),
+        })
+
+    tickers_list = list(shares_by_ticker.keys())
+    raw = yf.download(
+        tickers_list,
+        start=start_dt.strftime("%Y-%m-%d"),
+        end=end_dt.strftime("%Y-%m-%d"),
+        auto_adjust=True,
+        progress=False,
+        multi_level_index=True,
+    )
+
+    if raw.empty:
+        return jsonify({
+            "dates": [], "values": [], "summary": {},
+            "untracked": tickers_list, "untracked_value": round(constant_value, 2),
+        })
+
+    close = raw["Close"]   # DataFrame: index=Date, columns=tickers
+
+    # Build portfolio value series
+    portfolio   = pd.Series(0.0, index=close.index)
+    untracked   = []
+    for ticker, shares in shares_by_ticker.items():
+        if ticker in close.columns:
+            portfolio = portfolio + close[ticker].ffill() * shares
+        else:
+            untracked.append(ticker)
+            constant_value += shares_by_ticker[ticker]   # treat as constant
+
+    portfolio = portfolio + constant_value
+    portfolio = portfolio.dropna()
+
+    # Trim to last 365 calendar days
+    cutoff    = (end_dt - timedelta(days=365)).strftime("%Y-%m-%d")
+    portfolio = portfolio[portfolio.index >= cutoff]
+
+    if portfolio.empty:
+        return jsonify({
+            "dates": [], "values": [], "summary": {},
+            "untracked": untracked, "untracked_value": round(constant_value, 2),
+        })
+
+    dates  = [d.strftime("%Y-%m-%d") for d in portfolio.index]
+    values = [round(float(v), 2)     for v in portfolio.values]
+
+    start_val = values[0]
+    end_val   = values[-1]
+    gain      = end_val - start_val
+    gain_pct  = (gain / start_val * 100) if start_val else 0
+    peak_val  = max(values)
+    trough    = min(values)
+
+    # Monthly breakdown: first and last trading day of each calendar month
+    portfolio.index = pd.to_datetime(portfolio.index)
+    monthly_first = portfolio.resample("MS").first()
+    monthly_last  = portfolio.resample("MS").last()
+    monthly = []
+    for month in monthly_last.index:
+        m_start = float(monthly_first.get(month, monthly_last[month]))
+        m_end   = float(monthly_last[month])
+        m_gain  = m_end - m_start
+        m_pct   = (m_gain / m_start * 100) if m_start else 0
+        monthly.append({
+            "month":      month.strftime("%b %Y"),
+            "start":      round(m_start, 2),
+            "end":        round(m_end, 2),
+            "gain":       round(m_gain, 2),
+            "gain_pct":   round(m_pct, 2),
+        })
+
+    db_gain     = db_total - start_val
+    db_gain_pct = (db_gain / start_val * 100) if start_val else 0
+
+    return jsonify({
+        "dates":  dates,
+        "values": values,
+        "summary": {
+            "start_value":  round(start_val, 2),
+            "end_value":    round(db_total, 2),      # matches dashboard
+            "gain":         round(db_gain, 2),
+            "gain_pct":     round(db_gain_pct, 2),
+            "peak_value":   round(peak_val, 2),
+            "trough_value": round(trough, 2),
+        },
+        "monthly":          monthly,
+        "untracked":        untracked,
+        "untracked_value":  round(constant_value, 2),
+    })
+
+
+# ── API: Symbol lookup ───────────────────────────────────────────────────────
+
+
+@app.route("/api/lookup/<ticker>")
+def lookup_ticker(ticker):
+    symbol = ticker.strip().upper()
+    try:
+        t    = yf.Ticker(symbol)
+        hist = t.history(period="1y")
+        if hist.empty:
+            return jsonify({"error": f"No price history found for '{symbol}'"}), 404
+
+        info       = t.info
+        name       = info.get("longName") or info.get("shortName") or symbol
+        quote_type = (info.get("quoteType") or "").lower()   # equity, etf, mutualfund, …
+
+        dates  = [d.strftime("%Y-%m-%d") for d in hist.index]
+        prices = [round(float(p), 2) for p in hist["Close"]]
+
+        start_price   = prices[0]
+        current_price = prices[-1]
+        change        = current_price - start_price
+        change_pct    = (change / start_price * 100) if start_price else 0
+
+        # Top holdings for funds / ETFs
+        top_holdings = []
+        if quote_type in ("etf", "mutualfund"):
+            try:
+                # Try provider first (uses existing helper); limit to 10
+                holdings, _ = _get_etf_holdings(symbol, _get_fmp_api_key())
+                for h in holdings[:10]:
+                    top_holdings.append({
+                        "symbol":  h["symbol"],
+                        "name":    h["name"],
+                        "weight":  round(h["weight"] * 100, 2),
+                    })
+            except Exception:
+                try:
+                    top = t.funds_data.top_holdings
+                    if top is not None and not top.empty:
+                        for sym, row in top.head(10).iterrows():
+                            top_holdings.append({
+                                "symbol": str(sym),
+                                "name":   str(row["Name"]),
+                                "weight": round(float(row["Holding Percent"]) * 100, 2),
+                            })
+                except Exception:
+                    pass
+
+        return jsonify({
+            "symbol":       symbol,
+            "name":         name,
+            "quote_type":   quote_type,
+            "dates":        dates,
+            "prices":       prices,
+            "current_price": round(current_price, 2),
+            "start_price":   round(start_price, 2),
+            "change":        round(change, 2),
+            "change_pct":    round(change_pct, 2),
+            "week52_high":   info.get("fiftyTwoWeekHigh"),
+            "week52_low":    info.get("fiftyTwoWeekLow"),
+            "top_holdings":  top_holdings,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
 
 
 # ── API: CSV export ───────────────────────────────────────────────────────────

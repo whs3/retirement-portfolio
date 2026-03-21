@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Performance — Retirement Portfolio{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Portfolio Performance</h1>
+  <span class="last-updated" id="asOfDate"></span>
+</div>
+
+<p class="text-muted" style="margin-bottom:1.5rem">
+  Shows what your <strong>current holdings</strong> would have been worth each day over the past 12 months
+  (current shares × historical closing prices).
+</p>
+
+<div id="loadingMsg" class="alert" style="display:none"></div>
+
+<!-- Summary cards -->
+<div class="summary-cards" id="summaryCards" style="display:none">
+  <div class="card summary-card">
+    <div class="card-label">Value 12 Months Ago</div>
+    <div class="card-value" id="startValue">—</div>
+  </div>
+  <div class="card summary-card">
+    <div class="card-label">Current Value</div>
+    <div class="card-value" id="endValue">—</div>
+  </div>
+  <div class="card summary-card">
+    <div class="card-label">12-Month Gain / Loss</div>
+    <div class="card-value" id="gainValue">—</div>
+    <div class="card-sub"   id="gainPct">—</div>
+  </div>
+  <div class="card summary-card">
+    <div class="card-label">Peak Value</div>
+    <div class="card-value" id="peakValue">—</div>
+  </div>
+</div>
+
+<!-- Growth chart -->
+<div class="card" id="chartCard" style="display:none;padding:1.5rem;margin-bottom:1.5rem">
+  <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem">Portfolio Value — Past 12 Months</h2>
+  <div style="position:relative;height:320px">
+    <canvas id="performanceChart"></canvas>
+  </div>
+</div>
+
+<!-- Monthly breakdown -->
+<div class="card" id="monthlyCard" style="display:none">
+  <div style="padding:1rem 1rem 0">
+    <h2 style="font-size:1rem;font-weight:600">Monthly Performance</h2>
+  </div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th class="text-right">Start Value</th>
+          <th class="text-right">End Value</th>
+          <th class="text-right">Change ($)</th>
+          <th class="text-right">Change (%)</th>
+        </tr>
+      </thead>
+      <tbody id="monthlyBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Untracked notice -->
+<div id="untrackedNotice" style="display:none;margin-top:1rem">
+  <div class="alert alert-danger" id="untrackedMsg"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/performance.js') }}"></script>
+{% endblock %}

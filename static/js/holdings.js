@@ -11,8 +11,8 @@ const TYPE_LABELS = {
 let holdings     = [];
 let editingId    = null;
 let fetchedPrice = null;  // cached price from last "Fetch" call
-let sortCol      = 'name';
-let sortDir      = 1;  // 1 = asc, -1 = desc
+let sortCol      = 'purchase_date';
+let sortDir      = -1;  // 1 = asc, -1 = desc
 
 function fmt(n) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -44,7 +44,7 @@ function renderTable() {
   const query = (document.getElementById('holdingsSearch')?.value ?? '').trim().toLowerCase();
 
   if (!holdings.length) {
-    tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted" style="padding:2rem">
+    tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted" style="padding:2rem">
       No holdings yet. Click "Add Holding" to get started.</td></tr>`;
     return;
   }
@@ -78,7 +78,7 @@ function renderTable() {
   });
 
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted" style="padding:2rem">
+    tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted" style="padding:2rem">
       No holdings match your search.</td></tr>`;
     return;
   }
@@ -90,15 +90,14 @@ function renderTable() {
     <tr>
       <td style="white-space:nowrap"><strong>${esc(h.name)}</strong>${notes}</td>
       <td>${esc(h.ticker) || '—'}</td>
-      <td><span class="badge badge-${h.asset_type}">${TYPE_LABELS[h.asset_type] ?? h.asset_type}</span></td>
-      <td>${esc(h.category) || '—'}</td>
+      <td>${h.purchase_date || '—'}</td>
       <td class="text-right">${h.shares > 0 ? h.shares : '—'}</td>
-      <td class="text-right">${fmt(h.cost_basis)}</td>
       <td class="text-right">${h.pps > 0 ? fmt(h.pps) : '—'}</td>
       <td class="text-right">${fmt(h.current_value)}</td>
+      <td class="text-right">${fmt(h.cost_basis)}</td>
       <td class="text-right ${cls}">${fmt(h.gain)}</td>
       <td class="text-right ${cls}">${(h.gain >= 0 ? '+' : '')}${h.gainPct.toFixed(2)}%</td>
-      <td>${h.purchase_date || '—'}</td>
+      <td>${esc(h.category) || '—'}</td>
       <td class="col-actions">
         <button class="btn btn-sm btn-secondary" onclick="openModal(${h.id})">Edit</button>
         <button class="btn btn-sm btn-danger"    onclick="deleteHolding(${h.id}, '${esc(h.name)}')">Delete</button>
@@ -273,10 +272,13 @@ function recalcCurrentValue() {
   const shares = parseFloat(document.getElementById('shares').value) || 0;
   if (ticker === '$$CASH') {
     document.getElementById('currentValue').value = shares.toFixed(2);
+    if (editingId === null) document.getElementById('costBasis').value = shares.toFixed(2);
     return;
   }
   if (fetchedPrice === null) return;
-  document.getElementById('currentValue').value = (shares * fetchedPrice).toFixed(2);
+  const cv = (shares * fetchedPrice).toFixed(2);
+  document.getElementById('currentValue').value = cv;
+  if (editingId === null) document.getElementById('costBasis').value = cv;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

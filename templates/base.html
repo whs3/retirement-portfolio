@@ -16,6 +16,9 @@
     <li><a href="/holdings" {% if request.endpoint == 'holdings_page'  %}class="active"{% endif %}>Holdings</a></li>
     <li><a href="/rebalance"{% if request.endpoint == 'rebalance_page' %}class="active"{% endif %}>Rebalance</a></li>
     <li><a href="/audit"   {% if request.endpoint == 'audit_page'     %}class="active"{% endif %}>Audit Log</a></li>
+    <li><a href="/overlap"     {% if request.endpoint == 'overlap_page'      %}class="active"{% endif %}>Overlap</a></li>
+    <li><a href="/performance" {% if request.endpoint == 'performance_page'  %}class="active"{% endif %}>Performance</a></li>
+    <li><a href="/lookup"      {% if request.endpoint == 'lookup_page'       %}class="active"{% endif %}>Price Lookup</a></li>
     <li><a href="/api/export/csv" class="btn-nav-export">Export CSV</a></li>
   </ul>
 </nav>

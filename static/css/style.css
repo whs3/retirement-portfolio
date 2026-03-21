@@ -172,7 +172,7 @@ body {
 .table tbody tr:last-child td { border-bottom: none; }
 .table tbody tr:hover          { background: #f8fafc; }
 
-.text-right  { text-align: right; }
+.text-right, .table .text-right { text-align: right; }
 .text-center { text-align: center; }
 .text-muted  { color: var(--text-muted); }
 .text-success{ color: var(--success); }

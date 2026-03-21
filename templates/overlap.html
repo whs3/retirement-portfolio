@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Stock Overlap — Retirement Portfolio{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Stock Overlap Analysis</h1>
+  <button class="btn btn-primary" id="calcBtn" onclick="calculate()">Calculate Overlap</button>
+</div>
+
+<p class="text-muted" style="margin-bottom:1rem">
+  Breaks down every ETF and mutual fund into its underlying stocks (via live data) and
+  accumulates your total dollar exposure to each individual company across your entire portfolio.
+</p>
+
+<!-- FMP API key settings -->
+<div class="card" style="padding:1rem;margin-bottom:1.5rem">
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px">
+      <label style="font-weight:600;font-size:0.9rem">Financial Modeling Prep API Key
+        <span style="font-weight:400;color:var(--text-muted)"> — optional, enables full holdings (requires paid plan at financialmodelingprep.com)</span>
+      </label>
+      <div style="display:flex;gap:0.4rem;margin-top:0.4rem">
+        <input type="password" id="fmpKeyInput" placeholder="Enter FMP API key…"
+          style="flex:1;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:4px;font-size:0.9rem">
+        <button class="btn btn-sm btn-secondary" onclick="saveFmpKey()">Save</button>
+        <button class="btn btn-sm btn-secondary" onclick="clearFmpKey()">Clear</button>
+      </div>
+    </div>
+    <div id="fmpKeyStatus" style="font-size:0.88rem;color:var(--text-muted);padding-top:1.2rem"></div>
+  </div>
+</div>
+
+<div id="statusMsg" style="display:none" class="alert"></div>
+
+<!-- Chart + summary cards -->
+<div id="resultsSection" style="display:none">
+  <div id="summaryCards" style="margin-bottom:1.5rem"></div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem">
+    <div class="card" style="padding:1.5rem">
+      <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem">Portfolio Composition (Top 15)</h2>
+      <div style="position:relative;max-height:340px;display:flex;align-items:center;justify-content:center">
+        <canvas id="overlapChart"></canvas>
+      </div>
+    </div>
+    <div class="card" style="padding:1.5rem;display:flex;flex-direction:column;gap:0.5rem">
+      <h2 style="font-size:1rem;font-weight:600;margin-bottom:0.5rem">Top 15 Holdings</h2>
+      <div id="legendList" style="overflow-y:auto;flex:1"></div>
+    </div>
+  </div>
+
+  <!-- Other Holdings breakdown -->
+  <div id="otherBreakdownSection" style="display:none;margin-bottom:1.5rem">
+    <div class="card">
+      <div style="padding:1rem 1rem 0">
+        <h2 style="font-size:1rem;font-weight:600">Other Holdings Breakdown</h2>
+        <p class="text-muted" style="font-size:0.88rem;margin-top:0.25rem">
+          These ETFs have positions that yfinance does not expose in its top-holdings list.
+          The amounts below represent the unresolved portion of each fund.
+        </p>
+      </div>
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ETF</th>
+              <th>Name</th>
+              <th class="text-right">Coverage</th>
+              <th class="text-right">Unresolved %</th>
+              <th class="text-right">Unresolved Value</th>
+              <th>Data Source</th>
+            </tr>
+          </thead>
+          <tbody id="otherBreakdownBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full table -->
+  <div class="card">
+    <div style="padding:1rem 1rem 0">
+      <input type="search" id="overlapSearch" placeholder="Search by ticker or name…"
+        style="width:100%;padding:0.5rem 0.75rem;border:1px solid var(--border);border-radius:4px;font-size:0.95rem">
+    </div>
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:3rem">#</th>
+            <th>Ticker</th>
+            <th>Name</th>
+            <th class="text-right">Est. Value</th>
+            <th class="text-right">Portfolio %</th>
+          </tr>
+        </thead>
+        <tbody id="overlapBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Errors -->
+  <div id="errorSection" style="display:none;margin-top:1rem">
+    <div class="alert alert-danger">
+      <strong>Some holdings could not be broken down:</strong>
+      <ul id="errorList" style="margin:0.5rem 0 0 1.2rem"></ul>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/overlap.js') }}"></script>
+{% endblock %}

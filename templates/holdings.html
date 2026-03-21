@@ -22,20 +22,19 @@
         <tr>
           <th class="th-sortable" onclick="sortHoldings('name')">Name <span class="sort-indicator" data-col="name"></span></th>
           <th class="th-sortable" onclick="sortHoldings('ticker')">Ticker <span class="sort-indicator" data-col="ticker"></span></th>
-          <th class="th-sortable" onclick="sortHoldings('asset_type')">Type <span class="sort-indicator" data-col="asset_type"></span></th>
-          <th class="th-sortable" onclick="sortHoldings('category')">Category <span class="sort-indicator" data-col="category"></span></th>
+          <th class="th-sortable" onclick="sortHoldings('purchase_date')">Purchase Date <span class="sort-indicator" data-col="purchase_date"></span></th>
           <th class="th-sortable text-right" onclick="sortHoldings('shares')">Shares <span class="sort-indicator" data-col="shares"></span></th>
-          <th class="th-sortable text-right" onclick="sortHoldings('cost_basis')">Cost Basis <span class="sort-indicator" data-col="cost_basis"></span></th>
           <th class="th-sortable text-right" onclick="sortHoldings('pps')">Price/Share <span class="sort-indicator" data-col="pps"></span></th>
           <th class="th-sortable text-right" onclick="sortHoldings('current_value')">Current Value <span class="sort-indicator" data-col="current_value"></span></th>
+          <th class="th-sortable text-right" onclick="sortHoldings('cost_basis')">Cost Basis <span class="sort-indicator" data-col="cost_basis"></span></th>
           <th class="th-sortable text-right" onclick="sortHoldings('gain')">Gain / Loss <span class="sort-indicator" data-col="gain"></span></th>
           <th class="th-sortable text-right" onclick="sortHoldings('gainPct')">Return <span class="sort-indicator" data-col="gainPct"></span></th>
-          <th class="th-sortable" onclick="sortHoldings('purchase_date')">Purchase Date <span class="sort-indicator" data-col="purchase_date"></span></th>
+          <th class="th-sortable" onclick="sortHoldings('category')">Category <span class="sort-indicator" data-col="category"></span></th>
           <th class="col-actions">Actions</th>
         </tr>
       </thead>
       <tbody id="holdingsBody">
-        <tr><td colspan="12" class="text-center text-muted">Loading…</td></tr>
+        <tr><td colspan="11" class="text-center text-muted">Loading…</td></tr>
       </tbody>
     </table>
   </div>

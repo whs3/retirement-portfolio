@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Price Lookup — Retirement Portfolio{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Price Lookup</h1>
+</div>
+
+<!-- Controls -->
+<div class="card" style="padding:1rem;margin-bottom:1.5rem">
+  <div style="display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px">
+      <label style="font-size:0.85rem;font-weight:600;display:block;margin-bottom:0.3rem">Portfolio Holdings</label>
+      <select id="portfolioSelect"
+        style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:4px;font-size:0.95rem">
+        <option value="">— Select a holding —</option>
+      </select>
+    </div>
+    <div style="flex:1;min-width:200px">
+      <label style="font-size:0.85rem;font-weight:600;display:block;margin-bottom:0.3rem">Or enter any ticker</label>
+      <input type="text" id="tickerInput" placeholder="e.g. AAPL, QQQ, BND…"
+        style="width:100%;padding:0.45rem 0.6rem;border:1px solid var(--border);border-radius:4px;font-size:0.95rem;text-transform:uppercase"
+        maxlength="20">
+    </div>
+    <button class="btn btn-primary" onclick="lookupTicker()" style="white-space:nowrap">Look Up</button>
+  </div>
+</div>
+
+<!-- Market Indices -->
+<div id="indicesStatus" class="alert" style="display:none"></div>
+<div id="indicesSection" style="display:none;margin-bottom:1.5rem">
+  <div class="card" style="padding:1.5rem">
+    <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem">Market Indices — Past 12 Months</h2>
+    <div style="display:flex;gap:3rem;margin-bottom:1rem;flex-wrap:wrap">
+      <div id="indexStats_0"></div>
+      <div id="indexStats_1"></div>
+    </div>
+    <div style="position:relative;height:320px">
+      <canvas id="indicesChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<div id="statusMsg" style="display:none" class="alert"></div>
+
+<!-- Results -->
+<div id="resultsSection" style="display:none">
+
+  <!-- Header / summary -->
+  <div style="margin-bottom:1.5rem">
+    <div style="display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap">
+      <h2 id="symbolName" style="font-size:1.4rem;font-weight:700"></h2>
+      <span id="symbolTicker" style="font-size:1rem;color:var(--text-muted);font-weight:600"></span>
+    </div>
+    <div style="display:flex;gap:2rem;margin-top:0.75rem;flex-wrap:wrap">
+      <div>
+        <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Current Price</div>
+        <div id="currentPrice" style="font-size:1.5rem;font-weight:700"></div>
+      </div>
+      <div>
+        <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">12-Month Change</div>
+        <div id="priceChange" style="font-size:1.5rem;font-weight:700"></div>
+      </div>
+      <div>
+        <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">52-Week High</div>
+        <div id="week52High" style="font-size:1.1rem;font-weight:600"></div>
+      </div>
+      <div>
+        <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">52-Week Low</div>
+        <div id="week52Low" style="font-size:1.1rem;font-weight:600"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div class="card" style="padding:1.5rem;margin-bottom:1.5rem">
+    <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem" id="chartTitle">Price — Past 12 Months</h2>
+    <div style="position:relative;height:320px">
+      <canvas id="lookupChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Top holdings (ETF / mutual fund only) -->
+  <div id="holdingsSection" style="display:none">
+    <div class="card">
+      <div style="padding:1rem 1rem 0">
+        <h2 style="font-size:1rem;font-weight:600" id="holdingsTitle">Top 10 Holdings</h2>
+      </div>
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:3rem">#</th>
+              <th>Ticker</th>
+              <th>Name</th>
+              <th style="text-align:right">Weight</th>
+            </tr>
+          </thead>
+          <tbody id="holdingsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/lookup.js') }}"></script>
+{% endblock %}

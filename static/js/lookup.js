@@ -234,6 +234,7 @@ function renderResults(data) {
     data.week52_low  != null ? fmtPrice(data.week52_low)  : '—';
 
   renderChart(data.symbol, data.dates, data.prices);
+  renderAnalyst(data);
   renderHoldings(data);
 
   document.getElementById('resultsSection').style.display = '';
@@ -329,6 +330,108 @@ function renderChart(symbol, dates, prices) {
       },
     },
   });
+}
+
+// ── Analyst recommendations ───────────────────────────────────────────────────
+
+const _REC_META = {
+  strongbuy:  { label: 'Strong Buy',  bg: '#16a34a', fg: '#fff', pos: 0   },
+  buy:        { label: 'Buy',         bg: '#4ade80', fg: '#14532d', pos: 25  },
+  hold:       { label: 'Hold',        bg: '#fbbf24', fg: '#78350f', pos: 50  },
+  sell:       { label: 'Sell',        bg: '#f87171', fg: '#7f1d1d', pos: 75  },
+  strongsell: { label: 'Strong Sell', bg: '#dc2626', fg: '#fff', pos: 100 },
+};
+
+function renderAnalyst(data) {
+  const section = document.getElementById('analystSection');
+  const a = data.analyst;
+
+  if (!a || !a.recommendation) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = '';
+
+  const meta  = _REC_META[a.recommendation] || { label: a.recommendation, bg: '#94a3b8', fg: '#fff', pos: 50 };
+  const price = data.current_price;
+
+  // Badge
+  const badge = document.getElementById('analystBadge');
+  badge.textContent        = meta.label;
+  badge.style.background   = meta.bg;
+  badge.style.color        = meta.fg;
+
+  // Meta line
+  document.getElementById('analystMeta').textContent =
+    a.num_analysts ? `Based on ${a.num_analysts} analyst${a.num_analysts !== 1 ? 's' : ''}` : '';
+
+  // Scale marker (mean: 1=strong buy, 5=strong sell → 0–100%)
+  const pct = a.recommendation_mean != null ? ((a.recommendation_mean - 1) / 4) * 100 : meta.pos;
+  document.getElementById('analystScaleMarker').style.left = `${Math.max(0, Math.min(100, pct))}%`;
+  document.getElementById('analystScoreLabel').textContent =
+    a.recommendation_mean != null ? `Score ${a.recommendation_mean.toFixed(2)} / 5` : '';
+
+  // Price targets
+  const targetsEl = document.getElementById('analystTargets');
+  if (a.target_mean != null) {
+    const upside    = price ? ((a.target_mean - price) / price * 100) : null;
+    const upsideCls = upside != null ? (upside >= 0 ? 'text-success' : 'text-danger') : '';
+    const upsideTxt = upside != null ? ` <span class="${upsideCls}">(${upside >= 0 ? '+' : ''}${upside.toFixed(1)}%)</span>` : '';
+    targetsEl.innerHTML = `
+      <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:0.4rem">12-Month Price Targets</div>
+      <table style="border-collapse:collapse;font-size:0.9rem">
+        <tr><td style="color:var(--text-muted);padding-right:1.2rem">Mean</td>
+            <td><strong>${fmtPrice(a.target_mean)}</strong>${upsideTxt}</td></tr>
+        ${a.target_high != null ? `<tr><td style="color:var(--text-muted);padding-right:1.2rem">High</td><td>${fmtPrice(a.target_high)}</td></tr>` : ''}
+        ${a.target_low  != null ? `<tr><td style="color:var(--text-muted);padding-right:1.2rem">Low</td><td>${fmtPrice(a.target_low)}</td></tr>` : ''}
+      </table>`;
+  } else {
+    targetsEl.innerHTML = '';
+  }
+
+  // Summary narrative
+  const summaryEl = document.getElementById('analystSummary');
+  const parts = [];
+  if (a.num_analysts && a.recommendation) {
+    parts.push(`${a.num_analysts} analyst${a.num_analysts !== 1 ? 's' : ''} currently cover <strong>${esc(data.symbol)}</strong>, with a consensus rating of <strong>${meta.label}</strong>.`);
+  }
+  if (a.target_mean != null && price) {
+    const upside = ((a.target_mean - price) / price * 100);
+    const dir    = upside >= 0 ? 'upside' : 'downside';
+    const cls    = upside >= 0 ? 'text-success' : 'text-danger';
+    parts.push(`The mean 12-month price target of <strong>${fmtPrice(a.target_mean)}</strong> implies <span class="${cls}">${Math.abs(upside).toFixed(1)}% ${dir}</span> from the current price of ${fmtPrice(price)}.`);
+  }
+  if (a.target_high != null && a.target_low != null) {
+    parts.push(`Analyst targets range from ${fmtPrice(a.target_low)} to ${fmtPrice(a.target_high)}.`);
+  }
+  summaryEl.innerHTML = parts.join(' ');
+
+  // Recent actions table
+  const actionsWrap = document.getElementById('analystActionsWrap');
+  const actionsBody = document.getElementById('analystActionsBody');
+  if (a.recent_actions && a.recent_actions.length) {
+    actionsBody.innerHTML = a.recent_actions.map(r => {
+      const toGrade = esc(r.to_grade || '—');
+      const fromGrade = esc(r.from_grade || '—');
+      const gradeChanged = r.from_grade && r.to_grade && r.from_grade !== r.to_grade;
+      const gradeCls = gradeChanged
+        ? (_REC_META[r.to_grade.toLowerCase().replace(/ /g,'')] ? '' : '')
+        : 'text-muted';
+      const pt = r.price_target != null ? fmtPrice(r.price_target) : '—';
+      return `<tr>
+        <td class="text-muted">${esc(r.date)}</td>
+        <td><strong>${esc(r.firm)}</strong></td>
+        <td>${esc(r.action || '—')}</td>
+        <td class="text-muted">${fromGrade}</td>
+        <td class="${gradeChanged ? 'text-success' : ''}">${toGrade}</td>
+        <td class="text-right">${pt}</td>
+      </tr>`;
+    }).join('');
+    actionsWrap.style.display = '';
+  } else {
+    actionsWrap.style.display = 'none';
+  }
 }
 
 function renderHoldings(data) {

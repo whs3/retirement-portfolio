@@ -80,6 +80,60 @@
     </div>
   </div>
 
+  <!-- Analyst recommendations -->
+  <div id="analystSection" style="display:none;margin-bottom:1.5rem">
+    <div class="card" style="padding:1.5rem">
+      <h2 style="font-size:1rem;font-weight:600;margin-bottom:1.25rem">Analyst Recommendations</h2>
+
+      <!-- Consensus + targets -->
+      <div style="display:flex;gap:2.5rem;flex-wrap:wrap;margin-bottom:1.25rem;align-items:flex-start">
+
+        <!-- Badge + scale -->
+        <div style="min-width:160px">
+          <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:0.4rem">Consensus</div>
+          <div id="analystBadge" style="display:inline-block;padding:0.3rem 0.9rem;border-radius:999px;font-weight:700;font-size:1rem;margin-bottom:0.5rem"></div>
+          <div style="font-size:0.82rem;color:var(--text-muted)" id="analystMeta"></div>
+          <!-- 1–5 scale bar -->
+          <div style="margin-top:0.6rem">
+            <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-muted);margin-bottom:2px">
+              <span>Strong Buy</span><span>Strong Sell</span>
+            </div>
+            <div style="position:relative;height:6px;border-radius:3px;background:linear-gradient(to right,#16a34a,#86efac,#fbbf24,#f87171,#dc2626)">
+              <div id="analystScaleMarker" style="position:absolute;top:-3px;width:12px;height:12px;border-radius:50%;background:#1e293b;border:2px solid #fff;transform:translateX(-50%);transition:left .3s"></div>
+            </div>
+            <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;text-align:center" id="analystScoreLabel"></div>
+          </div>
+        </div>
+
+        <!-- Price targets -->
+        <div id="analystTargets" style="min-width:220px"></div>
+
+        <!-- Summary narrative -->
+        <div id="analystSummary" style="flex:1;min-width:220px;font-size:0.92rem;line-height:1.6;color:var(--text)"></div>
+      </div>
+
+      <!-- Recent analyst actions -->
+      <div id="analystActionsWrap" style="display:none">
+        <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.5rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Recent Analyst Actions</div>
+        <div class="table-responsive">
+          <table class="table" style="font-size:0.88rem">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Firm</th>
+                <th>Action</th>
+                <th>From</th>
+                <th>To</th>
+                <th style="text-align:right">Price Target</th>
+              </tr>
+            </thead>
+            <tbody id="analystActionsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Top holdings (ETF / mutual fund only) -->
   <div id="holdingsSection" style="display:none">
     <div class="card">

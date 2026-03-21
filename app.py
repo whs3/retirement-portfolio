@@ -1119,6 +1119,35 @@ def lookup_ticker(ticker):
                 except Exception:
                     pass
 
+        # ── Analyst recommendations ───────────────────────────────────────────
+        analyst = {}
+        rec_key = (info.get("recommendationKey") or "").lower().replace(" ", "")
+        if rec_key and rec_key != "none":
+            analyst["recommendation"]      = rec_key
+            analyst["recommendation_mean"] = info.get("recommendationMean")
+            analyst["num_analysts"]        = info.get("numberOfAnalystOpinions")
+            analyst["target_mean"]  = info.get("targetMeanPrice")
+            analyst["target_high"]  = info.get("targetHighPrice")
+            analyst["target_low"]   = info.get("targetLowPrice")
+
+            # Recent upgrades / downgrades (most recent 6)
+            recent_actions = []
+            try:
+                ud = t.upgrades_downgrades
+                if ud is not None and not ud.empty:
+                    for idx, row in ud.head(6).iterrows():
+                        recent_actions.append({
+                            "date":         str(idx)[:10],
+                            "firm":         str(row.get("Firm", "")),
+                            "from_grade":   str(row.get("FromGrade", "")),
+                            "to_grade":     str(row.get("ToGrade", "")),
+                            "action":       str(row.get("priceTargetAction", row.get("Action", ""))),
+                            "price_target": row.get("currentPriceTarget"),
+                        })
+            except Exception:
+                pass
+            analyst["recent_actions"] = recent_actions
+
         return jsonify({
             "symbol":       symbol,
             "name":         name,
@@ -1132,6 +1161,7 @@ def lookup_ticker(ticker):
             "week52_high":   info.get("fiftyTwoWeekHigh"),
             "week52_low":    info.get("fiftyTwoWeekLow"),
             "top_holdings":  top_holdings,
+            "analyst":       analyst,
         })
     except Exception as exc:
         _app_logger.error("lookup_ticker %s: %s", symbol, exc)

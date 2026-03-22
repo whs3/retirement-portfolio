@@ -390,6 +390,7 @@ function renderCategoriesChart(dates, categoriesSeries) {
         },
         y: {
           stacked: true,
+          min:     0,
           ticks:   { callback: v => fmtK(v) },
           grid:    { color: '#f1f5f9' },
         },

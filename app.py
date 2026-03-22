@@ -1119,6 +1119,21 @@ def lookup_ticker(ticker):
                 except Exception:
                     pass
 
+        # ── Fund info (ETF / mutual fund) ────────────────────────────────────
+        fund_info = {}
+        if quote_type in ("etf", "mutualfund"):
+            desc = (info.get("longBusinessSummary") or "")[:500] or None
+            fund_info = {
+                "fund_family":       info.get("fundFamily"),
+                "category":          info.get("category"),
+                "total_assets":      info.get("totalAssets"),
+                "expense_ratio":     info.get("annualReportExpenseRatio"),
+                "ytd_return":        info.get("ytdReturn"),
+                "three_year_return": info.get("threeYearAverageReturn"),
+                "five_year_return":  info.get("fiveYearAverageReturn"),
+                "description":       desc,
+            }
+
         # ── Analyst recommendations ───────────────────────────────────────────
         analyst = {}
         rec_key = (info.get("recommendationKey") or "").lower().replace(" ", "")
@@ -1162,6 +1177,7 @@ def lookup_ticker(ticker):
             "week52_low":    info.get("fiftyTwoWeekLow"),
             "top_holdings":  top_holdings,
             "analyst":       analyst,
+            "fund_info":     fund_info,
         })
     except Exception as exc:
         _app_logger.error("lookup_ticker %s: %s", symbol, exc)

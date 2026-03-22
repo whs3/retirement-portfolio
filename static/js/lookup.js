@@ -194,6 +194,7 @@ async function lookupTicker(symbol) {
   status.style.display = 'block';
   results.style.display = 'none';
   document.getElementById('analystSection').style.display = 'none';
+  document.getElementById('fundSection').style.display = 'none';
 
   try {
     const res  = await fetch(`/api/lookup/${encodeURIComponent(ticker)}`);
@@ -243,6 +244,10 @@ function renderResults(data) {
   try { renderAnalyst(data); } catch (e) {
     console.error('renderAnalyst error:', e);
     document.getElementById('analystSection').style.display = 'none';
+  }
+  try { renderFundInfo(data); } catch (e) {
+    console.error('renderFundInfo error:', e);
+    document.getElementById('fundSection').style.display = 'none';
   }
   renderHoldings(data);
 
@@ -361,6 +366,7 @@ function renderAnalyst(data) {
   }
 
   section.style.display = 'block';
+  document.getElementById('fundSection').style.display = 'none';
 
   const meta  = _REC_META[a.recommendation] || { label: a.recommendation, bg: '#94a3b8', fg: '#fff', pos: 50 };
   const price = data.current_price;
@@ -443,6 +449,54 @@ function renderAnalyst(data) {
   } else {
     actionsWrap.style.display = 'none';
   }
+}
+
+// ── Fund info (ETF / mutual fund) ─────────────────────────────────────────────
+
+function renderFundInfo(data) {
+  const section = document.getElementById('fundSection');
+  const fi = data.fund_info;
+
+  if (!fi || !Object.values(fi).some(v => v != null)) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  document.getElementById('analystSection').style.display = 'none';
+
+  const fmtAUM = n => {
+    if (n == null) return null;
+    n = Number(n);
+    if (n >= 1e12) return '$' + (n / 1e12).toFixed(2) + 'T';
+    if (n >= 1e9)  return '$' + (n / 1e9).toFixed(2)  + 'B';
+    if (n >= 1e6)  return '$' + (n / 1e6).toFixed(2)  + 'M';
+    return '$' + n.toLocaleString();
+  };
+
+  // ytdReturn is already a % value; three/fiveYearReturn are ratios (×100 to get %)
+  const fmtPct  = (n, isRatio) => n != null ? (isRatio ? (Number(n) * 100) : Number(n)).toFixed(2) + '%' : null;
+  const retCls  = n => n != null ? (Number(n) >= 0 ? 'text-success' : 'text-danger') : '';
+
+  const metrics = [
+    ['Fund Family',     fi.fund_family ? esc(fi.fund_family) : null,       null],
+    ['Category',        fi.category    ? esc(fi.category)    : null,       null],
+    ['AUM',             fmtAUM(fi.total_assets),                            null],
+    ['Expense Ratio',   fmtPct(fi.expense_ratio, true),                    null],
+    ['YTD Return',      fmtPct(fi.ytd_return, false),                      retCls(fi.ytd_return)],
+    ['3-Year Avg',      fmtPct(fi.three_year_return, true),                retCls(fi.three_year_return)],
+    ['5-Year Avg',      fmtPct(fi.five_year_return, true),                 retCls(fi.five_year_return)],
+  ].filter(([, v]) => v != null);
+
+  document.getElementById('fundMetrics').innerHTML = metrics.map(([label, value, cls]) => `
+    <div>
+      <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${label}</div>
+      <div style="font-weight:600;font-size:0.95rem" class="${cls || ''}">${value}</div>
+    </div>`).join('');
+
+  const descEl = document.getElementById('fundDescription');
+  descEl.textContent = fi.description || '';
+  descEl.style.display = fi.description ? '' : 'none';
 }
 
 function renderHoldings(data) {

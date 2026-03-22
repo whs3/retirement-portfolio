@@ -519,4 +519,22 @@ function renderMonthly(monthly) {
   document.getElementById('monthlyCard').style.display = '';
 }
 
+// ── Select / unselect all datasets ───────────────────────────────────────────
+
+function selectAllCategories(visible) {
+  if (!categoriesChart) return;
+  categoriesChart.data.datasets.forEach((_, i) =>
+    categoriesChart.setDatasetVisibility(i, visible)
+  );
+  categoriesChart.update();
+}
+
+function selectAllHoldings(visible) {
+  if (!holdingsChart) return;
+  holdingsChart.data.datasets.forEach((_, i) =>
+    holdingsChart.setDatasetVisibility(i, visible)
+  );
+  holdingsChart.update();
+}
+
 document.addEventListener('DOMContentLoaded', loadPerformance);

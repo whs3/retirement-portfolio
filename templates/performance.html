@@ -55,7 +55,13 @@
 
 <!-- Category breakdown chart -->
 <div class="card" id="categoriesChartCard" style="display:none;padding:1.5rem;margin-bottom:1.5rem">
-  <h2 id="categoriesChartTitle" style="font-size:1rem;font-weight:600;margin-bottom:1rem">Portfolio Value by Category — Past 12 Months</h2>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+    <h2 id="categoriesChartTitle" style="font-size:1rem;font-weight:600;margin:0">Portfolio Value by Category — Past 12 Months</h2>
+    <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;font-size:0.8rem">
+      <button onclick="selectAllCategories(true)"  style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent;border-right:1px solid var(--border)">Select All</button>
+      <button onclick="selectAllCategories(false)" style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent">Unselect All</button>
+    </div>
+  </div>
   <div style="position:relative;height:320px">
     <canvas id="categoriesChart"></canvas>
   </div>
@@ -63,7 +69,13 @@
 
 <!-- Individual holdings % change chart -->
 <div class="card" id="holdingsChartCard" style="display:none;padding:1.5rem;margin-bottom:1.5rem">
-  <h2 id="holdingsChartTitle" style="font-size:1rem;font-weight:600;margin-bottom:1rem">Individual Holdings — Past 12 Months % Change</h2>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+    <h2 id="holdingsChartTitle" style="font-size:1rem;font-weight:600;margin:0">Individual Holdings — Past 12 Months % Change</h2>
+    <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;font-size:0.8rem">
+      <button onclick="selectAllHoldings(true)"  style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent;border-right:1px solid var(--border)">Select All</button>
+      <button onclick="selectAllHoldings(false)" style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent">Unselect All</button>
+    </div>
+  </div>
   <div style="position:relative;height:320px">
     <canvas id="holdingsChart"></canvas>
   </div>

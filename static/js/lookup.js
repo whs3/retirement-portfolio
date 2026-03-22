@@ -601,6 +601,23 @@ function renderFundInfo(data) {
   const descEl = document.getElementById('fundDescription');
   descEl.textContent = fi.description || '';
   descEl.style.display = fi.description ? '' : 'none';
+
+  // Benchmark / tracked index
+  const benchEl = document.getElementById('fundBenchmark');
+  const bm = fi.benchmark;
+  if (bm && bm.name) {
+    const fmtRet = (n, label) => {
+      if (n == null) return '';
+      const sign = n >= 0 ? '+' : '';
+      const cls  = n >= 0 ? 'text-success' : 'text-danger';
+      return `<span style="margin-left:1.2rem;font-size:0.85rem;color:var(--text-muted)">${label}: <span class="${cls}" style="font-weight:600">${sign}${Number(n).toFixed(2)}%</span></span>`;
+    };
+    const returns = fmtRet(bm.ytd_return, 'YTD') + fmtRet(bm.one_year_return, '1-Year');
+    benchEl.innerHTML = `<strong>${esc(bm.name)}</strong>${returns}`;
+    benchEl.style.display = '';
+  } else {
+    benchEl.style.display = 'none';
+  }
 }
 
 function renderHoldings(data) {

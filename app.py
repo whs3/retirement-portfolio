@@ -108,6 +108,78 @@ def _get_ticker_category(ticker: str, asset_type: str) -> str:
     return cat
 
 
+# ── Fund benchmark helpers ────────────────────────────────────────────────────
+
+_INDEX_PATTERNS = [
+    # "track(s/ing) the performance of (the) X Index"
+    re.compile(r'track(?:s|ing)?\s+the\s+performance\s+of\s+(?:the\s+)?([^,;(]{4,90}?(?:Index|Indices|Average|Benchmark))', re.I),
+    # "replicate(s) (the performance of) (the) X Index"
+    re.compile(r'replicat(?:e|es|ing)\s+(?:the\s+performance\s+of\s+)?(?:the\s+)?([^,;(]{4,90}?(?:Index|Indices|Average|Benchmark))', re.I),
+    # "correspond(s) to (the) X Index"
+    re.compile(r'correspond\s+to\s+(?:the\s+)?([^,;(]{4,90}?(?:Index|Indices|Average|Benchmark))', re.I),
+    # "stocks/securities/assets in the X Index" — avoids matching generic 'in the trust...'
+    re.compile(r'(?:stocks?|securities?|assets?)\s+in\s+the\s+([A-Z][^,;(]{3,80}?(?:Index|Indices|Benchmark))', re.I),
+    # "the X Index, a..." or "the X Index."  — starts with capital letter
+    re.compile(r'the\s+([A-Z][^,;(]{5,80}?(?:Index|Indices|Benchmark))\s*[,.]', re.I),
+    # "invest in the X Index"
+    re.compile(r'invest\s+in\s+(?:the\s+)?([A-Z][^,;(]{4,80}?(?:Index|Indices|Benchmark))', re.I),
+]
+
+_VAGUE_INDEX_NAMES = {
+    "the index", "index", "an index", "this index", "the applicable index",
+    "its index", "the applicable benchmark", "such index", "a benchmark index",
+    "performance of the index",
+}
+
+# Keyword → yfinance ticker mapping for common indices
+_INDEX_TICKER_MAP = [
+    (["s&p 500", "standard & poor's 500", "s&p500", "s&p 500 index"],            "^GSPC"),
+    (["nasdaq-100", "nasdaq 100", "nasdaq100"],                                   "^NDX"),
+    (["nasdaq composite"],                                                         "^IXIC"),
+    (["dow jones industrial", "djia", "dow jones u.s. large-cap value"],          "^DJI"),
+    (["russell 2000"],                                                             "^RUT"),
+    (["russell 1000 growth"],                                                      "^RLG"),
+    (["russell 1000 value"],                                                       "^RLV"),
+    (["russell 1000"],                                                             "^RUI"),
+    (["s&p midcap 400", "s&p 400", "s&p mid cap"],                               "^SP400"),
+    (["s&p smallcap 600", "s&p 600"],                                             "^SP600"),
+    (["msci eafe"],                                                                "EFA"),
+    (["msci emerging markets", "ftse emerging markets"],                           "EEM"),
+    (["ftse developed all cap ex u.s", "msci acwi ex u.s"],                       "VEA"),
+    (["bloomberg u.s. aggregate", "bloomberg barclays u.s. aggregate",
+      "barclays u.s. aggregate", "bloomberg us aggregate"],                        "AGG"),
+    (["bloomberg global aggregate ex-usd"],                                        "BNDX"),
+]
+
+
+def _extract_fund_index(description: str) -> dict:
+    """
+    Return {'name': str, 'ticker': str|None} for the index a fund tracks,
+    or {} if no index name can be reliably extracted.
+    """
+    if not description:
+        return {}
+    for pat in _INDEX_PATTERNS:
+        m = pat.search(description)
+        if m:
+            raw = re.sub(r"[®™\u00ae\u2122]", "", m.group(1)).strip().rstrip(".,;: ")
+            if len(raw) > 90:
+                continue
+            if raw.lower() in _VAGUE_INDEX_NAMES:
+                continue
+            if "index" not in raw.lower():
+                continue
+            # Map to a yfinance ticker if known
+            ticker = None
+            lower = raw.lower()
+            for keywords, idx_ticker in _INDEX_TICKER_MAP:
+                if any(kw in lower for kw in keywords):
+                    ticker = idx_ticker
+                    break
+            return {"name": raw, "ticker": ticker}
+    return {}
+
+
 def _parse_positive_float(value, field_name: str) -> float:
     try:
         n = float(value)
@@ -1235,6 +1307,28 @@ def lookup_ticker(ticker):
             except Exception:
                 pass
 
+            # Extract the tracked index name + optional ticker from description
+            benchmark_info = _extract_fund_index(desc or "")
+            if benchmark_info.get("ticker") and benchmark_info["ticker"] != symbol:
+                try:
+                    idx_hist = yf.Ticker(benchmark_info["ticker"]).history(period="1y")
+                    if not idx_hist.empty:
+                        idx_prices = idx_hist["Close"].dropna()
+                        idx_current = float(idx_prices.iloc[-1])
+                        # 1-year return
+                        benchmark_info["one_year_return"] = round(
+                            (idx_current - float(idx_prices.iloc[0])) / float(idx_prices.iloc[0]) * 100, 4
+                        )
+                        # YTD return
+                        year_start = str(datetime.now().year) + "-01-01"
+                        idx_ytd = idx_hist[idx_hist.index >= year_start]["Close"].dropna()
+                        if not idx_ytd.empty:
+                            benchmark_info["ytd_return"] = round(
+                                (idx_current - float(idx_ytd.iloc[0])) / float(idx_ytd.iloc[0]) * 100, 4
+                            )
+                except Exception:
+                    pass
+
             fund_info = {
                 "fund_family":       info.get("fundFamily"),
                 "category":          info.get("category"),
@@ -1244,6 +1338,7 @@ def lookup_ticker(ticker):
                 "three_year_return": info.get("threeYearAverageReturn"),
                 "five_year_return":  info.get("fiveYearAverageReturn"),
                 "description":       desc,
+                "benchmark":         benchmark_info,
             }
 
         # ── Analyst recommendations ───────────────────────────────────────────

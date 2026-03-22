@@ -484,8 +484,9 @@ function renderHoldingsChart(dates, holdingsSeries) {
         },
         tooltip: {
           callbacks: {
-            title: ctx => ctx[0].label,
-            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(2)}%`,
+            title:      ctx => ctx[0].label,
+            label:      ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(2)}%`,
+            labelColor: ctx => ({ borderColor: ctx.dataset.borderColor, backgroundColor: ctx.dataset.borderColor }),
           },
         },
       },

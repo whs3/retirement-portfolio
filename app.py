@@ -21,6 +21,7 @@ app.config["DATABASE"] = "portfolio.db"
 app.config["AUDIT_LOG"] = "portfolio_audit.log"
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 app.config["WTF_CSRF_HEADERS"] = ["X-CSRFToken"]
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 csrf    = CSRFProtect(app)
 limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")

@@ -240,7 +240,10 @@ function renderResults(data) {
     data.week52_low  != null ? fmtPrice(data.week52_low)  : '—';
 
   renderChart(data.symbol, data.dates, data.prices);
-  renderAnalyst(data);
+  try { renderAnalyst(data); } catch (e) {
+    console.error('renderAnalyst error:', e);
+    document.getElementById('analystSection').style.display = 'none';
+  }
   renderHoldings(data);
 
   document.getElementById('resultsSection').style.display = '';
@@ -373,24 +376,26 @@ function renderAnalyst(data) {
     a.num_analysts ? `Based on ${a.num_analysts} analyst${a.num_analysts !== 1 ? 's' : ''}` : '';
 
   // Scale marker (mean: 1=strong buy, 5=strong sell → 0–100%)
-  const pct = a.recommendation_mean != null ? ((a.recommendation_mean - 1) / 4) * 100 : meta.pos;
+  const mean = a.recommendation_mean != null ? Number(a.recommendation_mean) : null;
+  const pct  = mean != null ? ((mean - 1) / 4) * 100 : meta.pos;
   document.getElementById('analystScaleMarker').style.left = `${Math.max(0, Math.min(100, pct))}%`;
   document.getElementById('analystScoreLabel').textContent =
-    a.recommendation_mean != null ? `Score ${a.recommendation_mean.toFixed(2)} / 5` : '';
+    mean != null ? `Score ${mean.toFixed(2)} / 5` : '';
 
   // Price targets
   const targetsEl = document.getElementById('analystTargets');
   if (a.target_mean != null) {
-    const upside    = price ? ((a.target_mean - price) / price * 100) : null;
+    const tMean     = Number(a.target_mean);
+    const upside    = price ? ((tMean - price) / price * 100) : null;
     const upsideCls = upside != null ? (upside >= 0 ? 'text-success' : 'text-danger') : '';
     const upsideTxt = upside != null ? ` <span class="${upsideCls}">(${upside >= 0 ? '+' : ''}${upside.toFixed(1)}%)</span>` : '';
     targetsEl.innerHTML = `
       <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:0.4rem">12-Month Price Targets</div>
       <table style="border-collapse:collapse;font-size:0.9rem">
         <tr><td style="color:var(--text-muted);padding-right:1.2rem">Mean</td>
-            <td><strong>${fmtPrice(a.target_mean)}</strong>${upsideTxt}</td></tr>
-        ${a.target_high != null ? `<tr><td style="color:var(--text-muted);padding-right:1.2rem">High</td><td>${fmtPrice(a.target_high)}</td></tr>` : ''}
-        ${a.target_low  != null ? `<tr><td style="color:var(--text-muted);padding-right:1.2rem">Low</td><td>${fmtPrice(a.target_low)}</td></tr>` : ''}
+            <td><strong>${fmtPrice(tMean)}</strong>${upsideTxt}</td></tr>
+        ${a.target_high != null ? `<tr><td style="color:var(--text-muted);padding-right:1.2rem">High</td><td>${fmtPrice(Number(a.target_high))}</td></tr>` : ''}
+        ${a.target_low  != null ? `<tr><td style="color:var(--text-muted);padding-right:1.2rem">Low</td><td>${fmtPrice(Number(a.target_low))}</td></tr>` : ''}
       </table>`;
   } else {
     targetsEl.innerHTML = '';
@@ -403,7 +408,7 @@ function renderAnalyst(data) {
     parts.push(`${a.num_analysts} analyst${a.num_analysts !== 1 ? 's' : ''} currently cover <strong>${esc(data.symbol)}</strong>, with a consensus rating of <strong>${meta.label}</strong>.`);
   }
   if (a.target_mean != null && price) {
-    const upside = ((a.target_mean - price) / price * 100);
+    const upside = ((Number(a.target_mean) - price) / price * 100);
     const dir    = upside >= 0 ? 'upside' : 'downside';
     const cls    = upside >= 0 ? 'text-success' : 'text-danger';
     parts.push(`The mean 12-month price target of <strong>${fmtPrice(a.target_mean)}</strong> implies <span class="${cls}">${Math.abs(upside).toFixed(1)}% ${dir}</span> from the current price of ${fmtPrice(price)}.`);

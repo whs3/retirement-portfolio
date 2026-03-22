@@ -162,7 +162,22 @@ function _drawIndicesChart(results, months) {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: true, position: 'top' },
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            generateLabels(chart) {
+              return chart.data.datasets.map((ds, i) => ({
+                text:         ds.label,
+                fillStyle:    ds.borderColor,
+                strokeStyle:  ds.borderColor,
+                lineWidth:    0,
+                hidden:       !chart.getDatasetMeta(i).visible,
+                datasetIndex: i,
+              }));
+            },
+          },
+        },
         tooltip: {
           callbacks: {
             title: ctx => ctx[0].label,

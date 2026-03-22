@@ -30,7 +30,14 @@
 <div id="indicesStatus" class="alert" style="display:none"></div>
 <div id="indicesSection" style="display:none;margin-bottom:1.5rem">
   <div class="card" style="padding:1.5rem">
-    <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem">Market Indices — Past 12 Months</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h2 id="indicesChartTitle" style="font-size:1rem;font-weight:600;margin:0">Market Indices — Past 12 Months</h2>
+      <div id="indicesPeriodBtns" style="display:none;border:1px solid var(--border);border-radius:4px;overflow:hidden;font-size:0.8rem">
+        <button id="indicesBtn1M"  onclick="setIndicesPeriod(1)"  style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent;border-right:1px solid var(--border)">1M</button>
+        <button id="indicesBtn6M"  onclick="setIndicesPeriod(6)"  style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent;border-right:1px solid var(--border)">6M</button>
+        <button id="indicesBtn12M" onclick="setIndicesPeriod(12)" style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent">12M</button>
+      </div>
+    </div>
     <div style="display:flex;gap:3rem;margin-bottom:1rem;flex-wrap:wrap">
       <div id="indexStats_0"></div>
       <div id="indexStats_1"></div>

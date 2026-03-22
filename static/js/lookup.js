@@ -4,6 +4,8 @@ let lookupChart   = null;
 let indicesChart  = null;
 let _lookupSeq    = 0;   // incremented on every lookup; stale responses are ignored
 
+const _PERIOD_LABELS = { 1: '1 Month', 6: '6 Months', 12: '12 Months' };
+
 // ── Market Indices (auto-loaded on page open) ─────────────────────────────────
 
 const INDEX_SYMBOLS = [
@@ -47,27 +49,68 @@ async function loadMarketIndices() {
   }
 }
 
-function renderIndicesChart(results) {
-  // Align to common trading days
-  const dateSets    = results.map(d => new Set(d.dates));
-  const commonDates = results[0].dates.filter(d => dateSets.every(s => s.has(d)));
+let _indicesFullResults  = null;
+let _activeIndicesPeriod = 12;
 
-  // Normalize each series to % change from first common date
+function renderIndicesChart(results) {
+  _indicesFullResults  = results;
+  _activeIndicesPeriod = 12;
+  _drawIndicesChart(results, 12);
+  document.getElementById('indicesPeriodBtns').style.display = '';
+  _updateIndicesPeriodBtns();
+}
+
+function setIndicesPeriod(months) {
+  if (!_indicesFullResults) return;
+  _activeIndicesPeriod = months;
+  _drawIndicesChart(_indicesFullResults, months);
+  _updateIndicesPeriodBtns();
+}
+
+function _updateIndicesPeriodBtns() {
+  [1, 6, 12].forEach(m => {
+    const btn = document.getElementById(`indicesBtn${m}M`);
+    if (!btn) return;
+    const active = m === _activeIndicesPeriod;
+    btn.style.background = active ? 'var(--primary, #2563eb)' : 'transparent';
+    btn.style.color      = active ? '#fff' : 'var(--text-muted, #64748b)';
+    btn.style.fontWeight = active ? '600' : '400';
+  });
+  document.getElementById('indicesChartTitle').textContent =
+    `Market Indices — Past ${_PERIOD_LABELS[_activeIndicesPeriod]}`;
+}
+
+function _drawIndicesChart(results, months) {
+  // Align to common trading days (full 12-month intersection)
+  const dateSets    = results.map(d => new Set(d.dates));
+  let   commonDates = results[0].dates.filter(d => dateSets.every(s => s.has(d)));
+
+  // Slice to selected period
+  if (months < 12) {
+    const last      = new Date(commonDates[commonDates.length - 1] + 'T00:00:00');
+    const cutoff    = new Date(last);
+    cutoff.setMonth(cutoff.getMonth() - months);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const idx       = commonDates.findIndex(d => d >= cutoffStr);
+    if (idx !== -1) commonDates = commonDates.slice(idx);
+  }
+
+  // Normalize each series to % change from the first date in the sliced window
   const datasets = results.map((data, i) => {
     const s        = INDEX_SYMBOLS[i];
     const priceMap = new Map(data.dates.map((d, j) => [d, data.prices[j]]));
     const prices   = commonDates.map(d => priceMap.get(d));
     const base     = prices[0];
     return {
-      label:           s.label,
-      data:            prices.map(p => ((p - base) / base) * 100),
-      borderColor:     s.color,
-      borderWidth:     2,
-      backgroundColor: 'transparent',
-      fill:            false,
-      pointRadius:     0,
+      label:            s.label,
+      data:             prices.map(p => ((p - base) / base) * 100),
+      borderColor:      s.color,
+      borderWidth:      2,
+      backgroundColor:  'transparent',
+      fill:             false,
+      pointRadius:      0,
       pointHoverRadius: 4,
-      tension:         0.3,
+      tension:          0.3,
     };
   });
 
@@ -227,7 +270,6 @@ function renderResults(data) {
 
   document.getElementById('symbolName').textContent   = data.name;
   document.getElementById('symbolTicker').textContent = data.symbol;
-  document.getElementById('chartTitle').textContent   = `${data.symbol} — Price, Past 12 Months`;
 
   document.getElementById('currentPrice').textContent = fmtPrice(data.current_price);
 
@@ -292,6 +334,10 @@ function _updatePeriodBtns() {
     btn.style.color      = active ? '#fff' : 'var(--text-muted, #64748b)';
     btn.style.fontWeight = active ? '600' : '400';
   });
+  if (_fullChartData) {
+    document.getElementById('chartTitle').textContent =
+      `${_fullChartData.symbol} — Price, Past ${_PERIOD_LABELS[_activePeriod]}`;
+  }
 }
 
 function _drawChart(symbol, dates, prices) {

@@ -1123,12 +1123,27 @@ def lookup_ticker(ticker):
         fund_info = {}
         if quote_type in ("etf", "mutualfund"):
             desc = (info.get("longBusinessSummary") or "")[:500] or None
+
+            # Calculate YTD return from actual price history (yfinance's ytdReturn
+            # field is often stale and unreliable)
+            ytd_return_calc = None
+            try:
+                import datetime as _dt
+                year_start = str(_dt.date.today().year) + "-01-01"
+                ytd_hist   = hist[hist.index >= year_start]
+                if not ytd_hist.empty:
+                    ytd_first = float(ytd_hist["Close"].iloc[0])
+                    if ytd_first:
+                        ytd_return_calc = round((current_price - ytd_first) / ytd_first * 100, 4)
+            except Exception:
+                pass
+
             fund_info = {
                 "fund_family":       info.get("fundFamily"),
                 "category":          info.get("category"),
                 "total_assets":      info.get("totalAssets"),
                 "expense_ratio":     info.get("annualReportExpenseRatio"),
-                "ytd_return":        info.get("ytdReturn"),
+                "ytd_return":        ytd_return_calc,
                 "three_year_return": info.get("threeYearAverageReturn"),
                 "five_year_return":  info.get("fiveYearAverageReturn"),
                 "description":       desc,

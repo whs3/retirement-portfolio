@@ -79,10 +79,10 @@ _VALID_TICKER = re.compile(r"^[\w.\-\^]{1,20}$")
 _category_cache: dict[str, str] = {}
 
 _ASSET_TYPE_FALLBACK = {
-    "stock":       "Stock",
-    "bond":        "Bond",
-    "etf":         "ETF",
-    "mutual_fund": "Mutual Fund",
+    "stock":       "Other Stock",
+    "bond":        "Other Bond",
+    "etf":         "Other",
+    "mutual_fund": "Other",
 }
 
 
@@ -90,22 +90,22 @@ def _get_ticker_category(ticker: str, asset_type: str) -> str:
     """Return the Morningstar category (ETF/fund) or sector (stock) for a ticker."""
     if ticker in _category_cache:
         return _category_cache[ticker]
-    cat = _ASSET_TYPE_FALLBACK.get(asset_type, "Other")
+    cat = None
     try:
         info = yf.Ticker(ticker).info
         qt   = (info.get("quoteType") or "").lower()
         if qt in ("etf", "mutualfund"):
-            c = (info.get("category") or "").strip()
-            if c:
-                cat = c
+            cat = (info.get("category") or "").strip() or None
         else:
-            s = (info.get("sector") or "").strip()
-            if s:
-                cat = s
+            cat = (info.get("sector") or "").strip() or None
     except Exception:
         pass
-    _category_cache[ticker] = cat
-    return cat
+    # Only cache a successful lookup; failed lookups retry on the next request
+    if cat:
+        _category_cache[ticker] = cat
+        return cat
+    # Fallback: don't use asset_type labels like "ETF" — they're not meaningful categories
+    return _ASSET_TYPE_FALLBACK.get(asset_type, "Other")
 
 
 # ── Fund benchmark helpers ────────────────────────────────────────────────────

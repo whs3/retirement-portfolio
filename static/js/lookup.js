@@ -1,7 +1,8 @@
 'use strict';
 
-let lookupChart  = null;
-let indicesChart = null;
+let lookupChart   = null;
+let indicesChart  = null;
+let _lookupSeq    = 0;   // incremented on every lookup; stale responses are ignored
 
 // ── Market Indices (auto-loaded on page open) ─────────────────────────────────
 
@@ -184,6 +185,7 @@ async function lookupTicker(symbol) {
   const ticker = (symbol || input.value).trim().toUpperCase();
   if (!ticker) { alert('Enter a ticker symbol first.'); return; }
 
+  const seq     = ++_lookupSeq;   // capture sequence number for this request
   const status  = document.getElementById('statusMsg');
   const results = document.getElementById('resultsSection');
 
@@ -191,10 +193,13 @@ async function lookupTicker(symbol) {
   status.textContent   = `Fetching data for ${ticker}…`;
   status.style.display = 'block';
   results.style.display = 'none';
+  document.getElementById('analystSection').style.display = 'none';
 
   try {
     const res  = await fetch(`/api/lookup/${encodeURIComponent(ticker)}`);
     const data = await res.json();
+
+    if (seq !== _lookupSeq) return;   // a newer lookup has started — discard this response
 
     if (!res.ok) {
       status.classList.add('alert-danger');
@@ -206,6 +211,7 @@ async function lookupTicker(symbol) {
     renderResults(data);
 
   } catch (err) {
+    if (seq !== _lookupSeq) return;
     status.classList.add('alert-danger');
     status.textContent = `Request failed: ${err.message}`;
   }
@@ -351,7 +357,7 @@ function renderAnalyst(data) {
     return;
   }
 
-  section.style.display = '';
+  section.style.display = 'block';
 
   const meta  = _REC_META[a.recommendation] || { label: a.recommendation, bg: '#94a3b8', fg: '#fff', pos: 50 };
   const price = data.current_price;

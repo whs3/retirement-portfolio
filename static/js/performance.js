@@ -339,6 +339,49 @@ function renderCategoriesChart(dates, categoriesSeries) {
     },
   };
 
+  // Plugin: draw percentage labels on the right side at each category's midpoint
+  const pctLabelsPlugin = {
+    id: 'catPctLabels',
+    afterDraw(chart) {
+      const { ctx, chartArea: { right }, scales: { y } } = chart;
+      const ds      = chart.data.datasets;
+      const lastIdx = chart.data.labels.length - 1;
+
+      // Total of visible datasets at the last point
+      let total = 0;
+      ds.forEach((d, i) => {
+        if (chart.getDatasetMeta(i).visible) total += (Number(d.data[lastIdx]) || 0);
+      });
+      if (!total) return;
+
+      ctx.save();
+      ctx.font         = '600 11px system-ui, sans-serif';
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'middle';
+
+      let cumulative = 0;
+      const MIN_BAND_PX = 14;   // skip label if band is too narrow to read
+
+      ds.forEach((d, i) => {
+        if (!chart.getDatasetMeta(i).visible) return;
+        const val  = Number(d.data[lastIdx]) || 0;
+        const mid  = cumulative + val / 2;
+        cumulative += val;
+
+        const topPx = y.getPixelForValue(cumulative);
+        const botPx = y.getPixelForValue(cumulative - val);
+        if (Math.abs(botPx - topPx) < MIN_BAND_PX) return;   // band too thin
+
+        const pct  = (val / total * 100).toFixed(1);
+        const yPx  = y.getPixelForValue(mid);
+        ctx.fillStyle = d.borderColor;
+        ctx.fillText(`${pct}%`, right + 6, yPx);
+      });
+
+      ctx.restore();
+    },
+  };
+
   const titleLabel = _activePerfPeriod === 'ytd'
     ? 'Portfolio Value by Category — YTD'
     : `Portfolio Value by Category — ${_PERF_PERIOD_LABELS[_activePerfPeriod]}`;
@@ -348,11 +391,12 @@ function renderCategoriesChart(dates, categoriesSeries) {
 
   categoriesChart = new Chart(document.getElementById('categoriesChart').getContext('2d'), {
     type:    'line',
-    plugins: [monthGridPlugin],
+    plugins: [monthGridPlugin, pctLabelsPlugin],
     data:    { labels: dates, datasets },
     options: {
       responsive:          true,
       maintainAspectRatio: false,
+      layout:              { padding: { right: 52 } },
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: true, position: 'top' },

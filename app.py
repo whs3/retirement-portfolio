@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
 import requests
@@ -72,6 +73,38 @@ def security_headers(response):
 # ── Input helpers ─────────────────────────────────────────────────────────────
 
 _VALID_TICKER = re.compile(r"^[\w.\-\^]{1,20}$")
+
+# Category cache: avoids re-fetching on every performance page load within a server session
+_category_cache: dict[str, str] = {}
+
+_ASSET_TYPE_FALLBACK = {
+    "stock":       "Stock",
+    "bond":        "Bond",
+    "etf":         "ETF",
+    "mutual_fund": "Mutual Fund",
+}
+
+
+def _get_ticker_category(ticker: str, asset_type: str) -> str:
+    """Return the Morningstar category (ETF/fund) or sector (stock) for a ticker."""
+    if ticker in _category_cache:
+        return _category_cache[ticker]
+    cat = _ASSET_TYPE_FALLBACK.get(asset_type, "Other")
+    try:
+        info = yf.Ticker(ticker).info
+        qt   = (info.get("quoteType") or "").lower()
+        if qt in ("etf", "mutualfund"):
+            c = (info.get("category") or "").strip()
+            if c:
+                cat = c
+        else:
+            s = (info.get("sector") or "").strip()
+            if s:
+                cat = s
+    except Exception:
+        pass
+    _category_cache[ticker] = cat
+    return cat
 
 
 def _parse_positive_float(value, field_name: str) -> float:
@@ -1044,6 +1077,46 @@ def get_performance():
         })
     holdings_series.sort(key=lambda x: x["values"][-1] if x["values"] else 0, reverse=True)
 
+    # Per-ticker asset_type from DB (used as fallback when yfinance has no category)
+    ticker_asset_type: dict[str, str] = {}
+    for h in holdings_rows:
+        tkr = (h["ticker"] or "").strip().upper()
+        if tkr and tkr not in ticker_asset_type:
+            ticker_asset_type[tkr] = h["asset_type"] or ""
+
+    # Fetch Morningstar category / sector for each tracked ticker (parallel, cached)
+    tracked_tickers = [h["ticker"] for h in holdings_series]
+    with ThreadPoolExecutor(max_workers=6) as _pool:
+        _futures = {
+            _pool.submit(_get_ticker_category, t, ticker_asset_type.get(t, "")): t
+            for t in tracked_tickers
+        }
+        ticker_categories: dict[str, str] = {}
+        for _fut in as_completed(_futures):
+            _t = _futures[_fut]
+            try:
+                ticker_categories[_t] = _fut.result()
+            except Exception:
+                ticker_categories[_t] = _ASSET_TYPE_FALLBACK.get(ticker_asset_type.get(_t, ""), "Other")
+
+    # Annotate each holding with its category
+    for h_item in holdings_series:
+        h_item["category"] = ticker_categories.get(h_item["ticker"], "Other")
+
+    # Group daily values by category and sum
+    from collections import defaultdict as _dd
+    cat_totals: dict[str, list[float]] = _dd(lambda: [0.0] * len(dates))
+    for h_item in holdings_series:
+        cat = h_item["category"]
+        for i, v in enumerate(h_item["values"]):
+            cat_totals[cat][i] += v
+
+    categories_series = sorted(
+        [{"category": cat, "values": [round(v, 2) for v in vals]} for cat, vals in cat_totals.items()],
+        key=lambda x: x["values"][-1] if x["values"] else 0,
+        reverse=True,
+    )
+
     start_val = values[0]
     end_val   = values[-1]
     gain      = end_val - start_val
@@ -1083,9 +1156,10 @@ def get_performance():
             "peak_value":   round(peak_val, 2),
             "trough_value": round(trough, 2),
         },
-        "monthly":          monthly,
-        "holdings_series":  holdings_series,
-        "untracked":        untracked,
+        "monthly":           monthly,
+        "holdings_series":   holdings_series,
+        "categories_series": categories_series,
+        "untracked":         untracked,
         "untracked_value":  round(constant_value, 2),
     })
 

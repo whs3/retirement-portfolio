@@ -1,7 +1,8 @@
 'use strict';
 
-let perfChart     = null;
-let holdingsChart = null;
+let perfChart       = null;
+let categoriesChart = null;
+let holdingsChart   = null;
 let _perfFullData = null;
 let _activePerfPeriod = '12m';
 
@@ -49,7 +50,7 @@ async function loadPerformance() {
   loading.textContent   = 'Fetching 12 months of price history — this may take a moment…';
   loading.style.display = 'block';
 
-  ['summaryCards','perfPeriodRow','chartCard','holdingsChartCard','monthlyCard','untrackedNotice'].forEach(id => {
+  ['summaryCards','perfPeriodRow','chartCard','categoriesChartCard','holdingsChartCard','monthlyCard','untrackedNotice'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -104,6 +105,7 @@ function setPerfPeriod(period) {
   const summary = _computeSummary(sliced.values, _perfFullData.summary.end_value);
   renderSummary(summary, period);
   renderChart(sliced.dates, sliced.values);
+  renderCategoriesChart(sliced.dates, sliced.categories_series || []);
   renderHoldingsChart(sliced.dates, sliced.holdings_series || []);
   renderMonthly(_filterMonthly(_perfFullData.monthly, sliced.dates));
 }
@@ -141,7 +143,8 @@ function _slicePerfData(data, period) {
     ...data,
     dates:           dates.slice(idx),
     values:          data.values.slice(idx),
-    holdings_series: (data.holdings_series || []).map(h => ({ ...h, values: h.values.slice(idx) })),
+    holdings_series:   (data.holdings_series   || []).map(h => ({ ...h, values: h.values.slice(idx) })),
+    categories_series: (data.categories_series || []).map(c => ({ ...c, values: c.values.slice(idx) })),
   };
 }
 
@@ -287,6 +290,114 @@ function renderChart(dates, values) {
   });
 
   document.getElementById('chartCard').style.display = '';
+}
+
+function renderCategoriesChart(dates, categoriesSeries) {
+  const card = document.getElementById('categoriesChartCard');
+
+  if (!categoriesSeries || !categoriesSeries.length) {
+    card.style.display = 'none';
+    if (categoriesChart) { categoriesChart.destroy(); categoriesChart = null; }
+    return;
+  }
+
+  const monthStarts = new Set();
+  const seenMonths  = new Set();
+  for (const d of dates) {
+    const ym = d.slice(0, 7);
+    if (!seenMonths.has(ym)) { seenMonths.add(ym); monthStarts.add(d); }
+  }
+
+  const datasets = categoriesSeries.map((cat, i) => ({
+    label:            cat.category,
+    data:             cat.values,
+    borderColor:      HOLDING_COLORS[i % HOLDING_COLORS.length],
+    backgroundColor:  HOLDING_COLORS[i % HOLDING_COLORS.length] + 'bb',
+    fill:             true,
+    pointRadius:      0,
+    pointHoverRadius: 4,
+    borderWidth:      1,
+    tension:          0.3,
+  }));
+
+  const monthGridPlugin = {
+    id: 'catMonthGrid',
+    afterDraw(chart) {
+      const xScale = chart.scales.x;
+      const { top, bottom } = chart.chartArea;
+      const c = chart.ctx;
+      c.save();
+      c.strokeStyle = 'rgba(100,116,139,0.25)';
+      c.lineWidth   = 1;
+      for (const d of monthStarts) {
+        const idx = dates.indexOf(d);
+        if (idx === -1) continue;
+        const x = xScale.getPixelForValue(idx);
+        c.beginPath(); c.moveTo(x, top); c.lineTo(x, bottom); c.stroke();
+      }
+      c.restore();
+    },
+  };
+
+  const titleLabel = _activePerfPeriod === 'ytd'
+    ? 'Portfolio Value by Category — YTD'
+    : `Portfolio Value by Category — ${_PERF_PERIOD_LABELS[_activePerfPeriod]}`;
+  document.getElementById('categoriesChartTitle').textContent = titleLabel;
+
+  if (categoriesChart) categoriesChart.destroy();
+
+  categoriesChart = new Chart(document.getElementById('categoriesChart').getContext('2d'), {
+    type:    'line',
+    plugins: [monthGridPlugin],
+    data:    { labels: dates, datasets },
+    options: {
+      responsive:          true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top' },
+        tooltip: {
+          callbacks: {
+            title: ctx => ctx[0].label,
+            label: ctx => {
+              const total = ctx.chart.data.datasets.reduce(
+                (sum, ds) => sum + (Number(ds.data[ctx.dataIndex]) || 0), 0
+              );
+              const pct = total ? (ctx.parsed.y / total * 100).toFixed(1) : '0.0';
+              return ` ${ctx.dataset.label}: ${fmtK(ctx.parsed.y)} (${pct}%)`;
+            },
+            footer: ctx => {
+              const total = ctx.reduce(
+                (sum, item) => sum + (Number(item.parsed.y) || 0), 0
+              );
+              return `Total: ${fmtK(total)}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'category',
+          ticks: {
+            autoSkip: false, maxRotation: 0,
+            callback(val) {
+              const d = this.getLabelForValue(val);
+              if (!d || !monthStarts.has(d)) return null;
+              return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+            },
+          },
+          grid: { display: false },
+        },
+        y: {
+          stacked: true,
+          ticks:   { callback: v => fmtK(v) },
+          grid:    { color: '#f1f5f9' },
+        },
+      },
+    },
+  });
+
+  card.style.display = '';
 }
 
 function renderHoldingsChart(dates, holdingsSeries) {

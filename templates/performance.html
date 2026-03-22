@@ -8,16 +8,26 @@
 </div>
 
 <p class="text-muted" style="margin-bottom:1.5rem">
-  Shows what your <strong>current holdings</strong> would have been worth each day over the past 12 months
+  Shows what your <strong>current holdings</strong> would have been worth each day
   (current shares × historical closing prices).
 </p>
 
 <div id="loadingMsg" class="alert" style="display:none"></div>
 
+<!-- Period selector -->
+<div id="perfPeriodRow" style="display:none;justify-content:flex-end;margin-bottom:1rem">
+  <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;font-size:0.8rem">
+    <button id="perfBtn3M"  onclick="setPerfPeriod('3m')"  style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent;border-right:1px solid var(--border)">3M</button>
+    <button id="perfBtn6M"  onclick="setPerfPeriod('6m')"  style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent;border-right:1px solid var(--border)">6M</button>
+    <button id="perfBtnYTD" onclick="setPerfPeriod('ytd')" style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent;border-right:1px solid var(--border)">YTD</button>
+    <button id="perfBtn12M" onclick="setPerfPeriod('12m')" style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent">12M</button>
+  </div>
+</div>
+
 <!-- Summary cards -->
 <div class="summary-cards" id="summaryCards" style="display:none">
   <div class="card summary-card">
-    <div class="card-label">Value 12 Months Ago</div>
+    <div class="card-label" id="startValueLabel">Value 12 Months Ago</div>
     <div class="card-value" id="startValue">—</div>
   </div>
   <div class="card summary-card">
@@ -25,7 +35,7 @@
     <div class="card-value" id="endValue">—</div>
   </div>
   <div class="card summary-card">
-    <div class="card-label">12-Month Gain / Loss</div>
+    <div class="card-label" id="gainLabel">12-Month Gain / Loss</div>
     <div class="card-value" id="gainValue">—</div>
     <div class="card-sub"   id="gainPct">—</div>
   </div>
@@ -35,11 +45,19 @@
   </div>
 </div>
 
-<!-- Growth chart -->
+<!-- Portfolio value chart -->
 <div class="card" id="chartCard" style="display:none;padding:1.5rem;margin-bottom:1.5rem">
-  <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem">Portfolio Value — Past 12 Months</h2>
+  <h2 id="perfChartTitle" style="font-size:1rem;font-weight:600;margin-bottom:1rem">Portfolio Value — Past 12 Months</h2>
   <div style="position:relative;height:320px">
     <canvas id="performanceChart"></canvas>
+  </div>
+</div>
+
+<!-- Individual holdings % change chart -->
+<div class="card" id="holdingsChartCard" style="display:none;padding:1.5rem;margin-bottom:1.5rem">
+  <h2 id="holdingsChartTitle" style="font-size:1rem;font-weight:600;margin-bottom:1rem">Individual Holdings — Past 12 Months % Change</h2>
+  <div style="position:relative;height:320px">
+    <canvas id="holdingsChart"></canvas>
   </div>
 </div>
 

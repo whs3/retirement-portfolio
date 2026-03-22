@@ -1023,6 +1023,27 @@ def get_performance():
     dates  = [d.strftime("%Y-%m-%d") for d in portfolio.index]
     values = [round(float(v), 2)     for v in portfolio.values]
 
+    # Per-ticker names from DB
+    ticker_names: dict[str, str] = {}
+    for h in holdings_rows:
+        tkr = (h["ticker"] or "").strip().upper()
+        if tkr and tkr not in ticker_names:
+            ticker_names[tkr] = h["name"] or tkr
+
+    # Per-holding value series aligned to portfolio dates
+    holdings_series = []
+    for ticker, shares in shares_by_ticker.items():
+        if ticker not in close.columns:
+            continue
+        series = (close[ticker].ffill() * shares).reindex(portfolio.index).ffill()
+        h_values = [round(float(v), 2) for v in series.values]
+        holdings_series.append({
+            "ticker": ticker,
+            "name":   ticker_names.get(ticker, ticker),
+            "values": h_values,
+        })
+    holdings_series.sort(key=lambda x: x["values"][-1] if x["values"] else 0, reverse=True)
+
     start_val = values[0]
     end_val   = values[-1]
     gain      = end_val - start_val
@@ -1063,6 +1084,7 @@ def get_performance():
             "trough_value": round(trough, 2),
         },
         "monthly":          monthly,
+        "holdings_series":  holdings_series,
         "untracked":        untracked,
         "untracked_value":  round(constant_value, 2),
     })

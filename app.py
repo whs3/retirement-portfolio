@@ -1333,7 +1333,7 @@ def lookup_ticker(ticker):
                 "fund_family":       info.get("fundFamily"),
                 "category":          info.get("category"),
                 "total_assets":      info.get("totalAssets"),
-                "expense_ratio":     info.get("annualReportExpenseRatio"),
+                "expense_ratio":     info.get("netExpenseRatio"),
                 "ytd_return":        ytd_return_calc,
                 "three_year_return": info.get("threeYearAverageReturn"),
                 "five_year_return":  info.get("fiveYearAverageReturn"),

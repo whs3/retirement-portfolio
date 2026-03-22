@@ -586,7 +586,7 @@ function renderFundInfo(data) {
     ['Fund Family',     fi.fund_family ? esc(fi.fund_family) : null,       null],
     ['Category',        fi.category    ? esc(fi.category)    : null,       null],
     ['AUM',             fmtAUM(fi.total_assets),                            null],
-    ['Expense Ratio',   fmtPct(fi.expense_ratio, true),                    null],
+    ['Net Expense Ratio', fmtPct(fi.expense_ratio, false),                 null],
     ['YTD Return',      fmtPct(fi.ytd_return, false),                      retCls(fi.ytd_return)],
     ['3-Year Avg',      fmtPct(fi.three_year_return, true),                retCls(fi.three_year_return)],
     ['5-Year Avg',      fmtPct(fi.five_year_return, true),                 retCls(fi.five_year_return)],

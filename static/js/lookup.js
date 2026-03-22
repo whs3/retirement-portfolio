@@ -4,7 +4,7 @@ let lookupChart   = null;
 let indicesChart  = null;
 let _lookupSeq    = 0;   // incremented on every lookup; stale responses are ignored
 
-const _PERIOD_LABELS = { 1: '1 Month', 6: '6 Months', 12: '12 Months' };
+const _PERIOD_LABELS = { 1: '1 Month', 3: '3 Months', 6: '6 Months', ytd: 'YTD', 12: '12 Months' };
 
 // ── Market Indices (auto-loaded on page open) ─────────────────────────────────
 
@@ -68,16 +68,19 @@ function setIndicesPeriod(months) {
 }
 
 function _updateIndicesPeriodBtns() {
-  [1, 6, 12].forEach(m => {
-    const btn = document.getElementById(`indicesBtn${m}M`);
+  [1, 3, 6, 'ytd', 12].forEach(m => {
+    const id  = `indicesBtn${m === 'ytd' ? 'YTD' : m + 'M'}`;
+    const btn = document.getElementById(id);
     if (!btn) return;
     const active = m === _activeIndicesPeriod;
     btn.style.background = active ? 'var(--primary, #2563eb)' : 'transparent';
     btn.style.color      = active ? '#fff' : 'var(--text-muted, #64748b)';
     btn.style.fontWeight = active ? '600' : '400';
   });
-  document.getElementById('indicesChartTitle').textContent =
-    `Market Indices — Past ${_PERIOD_LABELS[_activeIndicesPeriod]}`;
+  const label = _activeIndicesPeriod === 'ytd'
+    ? 'Market Indices — YTD'
+    : `Market Indices — Past ${_PERIOD_LABELS[_activeIndicesPeriod]}`;
+  document.getElementById('indicesChartTitle').textContent = label;
 }
 
 function _drawIndicesChart(results, months) {
@@ -86,12 +89,18 @@ function _drawIndicesChart(results, months) {
   let   commonDates = results[0].dates.filter(d => dateSets.every(s => s.has(d)));
 
   // Slice to selected period
-  if (months < 12) {
-    const last      = new Date(commonDates[commonDates.length - 1] + 'T00:00:00');
-    const cutoff    = new Date(last);
-    cutoff.setMonth(cutoff.getMonth() - months);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
-    const idx       = commonDates.findIndex(d => d >= cutoffStr);
+  if (months !== 12) {
+    let cutoffStr;
+    if (months === 'ytd') {
+      const year = new Date(commonDates[commonDates.length - 1] + 'T00:00:00').getFullYear();
+      cutoffStr = `${year}-01-01`;
+    } else {
+      const last   = new Date(commonDates[commonDates.length - 1] + 'T00:00:00');
+      const cutoff = new Date(last);
+      cutoff.setMonth(cutoff.getMonth() - months);
+      cutoffStr = cutoff.toISOString().slice(0, 10);
+    }
+    const idx = commonDates.findIndex(d => d >= cutoffStr);
     if (idx !== -1) commonDates = commonDates.slice(idx);
   }
 
@@ -316,18 +325,25 @@ function setChartPeriod(months) {
 }
 
 function _sliceByMonths(dates, prices, months) {
-  if (months >= 12) return { dates, prices };
-  const last    = new Date(dates[dates.length - 1] + 'T00:00:00');
-  const cutoff  = new Date(last);
-  cutoff.setMonth(cutoff.getMonth() - months);
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  if (months === 12) return { dates, prices };
+  let cutoffStr;
+  if (months === 'ytd') {
+    const year = new Date(dates[dates.length - 1] + 'T00:00:00').getFullYear();
+    cutoffStr = `${year}-01-01`;
+  } else {
+    const last   = new Date(dates[dates.length - 1] + 'T00:00:00');
+    const cutoff = new Date(last);
+    cutoff.setMonth(cutoff.getMonth() - months);
+    cutoffStr = cutoff.toISOString().slice(0, 10);
+  }
   const idx = dates.findIndex(d => d >= cutoffStr);
   return idx === -1 ? { dates, prices } : { dates: dates.slice(idx), prices: prices.slice(idx) };
 }
 
 function _updatePeriodBtns() {
-  [1, 6, 12].forEach(m => {
-    const btn = document.getElementById(`btn${m}M`);
+  [1, 3, 6, 'ytd', 12].forEach(m => {
+    const id  = `btn${m === 'ytd' ? 'YTD' : m + 'M'}`;
+    const btn = document.getElementById(id);
     if (!btn) return;
     const active = m === _activePeriod;
     btn.style.background = active ? 'var(--primary, #2563eb)' : 'transparent';
@@ -335,8 +351,10 @@ function _updatePeriodBtns() {
     btn.style.fontWeight = active ? '600' : '400';
   });
   if (_fullChartData) {
-    document.getElementById('chartTitle').textContent =
-      `${_fullChartData.symbol} — Price, Past ${_PERIOD_LABELS[_activePeriod]}`;
+    const label = _activePeriod === 'ytd'
+      ? `${_fullChartData.symbol} — Price, YTD`
+      : `${_fullChartData.symbol} — Price, Past ${_PERIOD_LABELS[_activePeriod]}`;
+    document.getElementById('chartTitle').textContent = label;
   }
 }
 

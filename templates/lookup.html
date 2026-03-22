@@ -74,7 +74,14 @@
 
   <!-- Chart -->
   <div class="card" style="padding:1.5rem;margin-bottom:1.5rem">
-    <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem" id="chartTitle">Price — Past 12 Months</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h2 style="font-size:1rem;font-weight:600;margin:0" id="chartTitle">Price — Past 12 Months</h2>
+      <div id="periodBtns" style="display:none;border:1px solid var(--border);border-radius:4px;overflow:hidden;font-size:0.8rem">
+        <button id="btn1M"  onclick="setChartPeriod(1)"  style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent;border-right:1px solid var(--border)">1M</button>
+        <button id="btn6M"  onclick="setChartPeriod(6)"  style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent;border-right:1px solid var(--border)">6M</button>
+        <button id="btn12M" onclick="setChartPeriod(12)" style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent">12M</button>
+      </div>
+    </div>
     <div style="position:relative;height:320px">
       <canvas id="lookupChart"></canvas>
     </div>

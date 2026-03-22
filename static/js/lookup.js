@@ -254,7 +254,47 @@ function renderResults(data) {
   document.getElementById('resultsSection').style.display = '';
 }
 
+let _fullChartData  = null;   // {symbol, dates, prices}
+let _activePeriod   = 12;
+
 function renderChart(symbol, dates, prices) {
+  _fullChartData = { symbol, dates, prices };
+  _activePeriod  = 12;
+  _drawChart(symbol, dates, prices);
+  document.getElementById('periodBtns').style.display = '';
+  _updatePeriodBtns();
+}
+
+function setChartPeriod(months) {
+  if (!_fullChartData) return;
+  _activePeriod = months;
+  const { dates, prices } = _sliceByMonths(_fullChartData.dates, _fullChartData.prices, months);
+  _drawChart(_fullChartData.symbol, dates, prices);
+  _updatePeriodBtns();
+}
+
+function _sliceByMonths(dates, prices, months) {
+  if (months >= 12) return { dates, prices };
+  const last    = new Date(dates[dates.length - 1] + 'T00:00:00');
+  const cutoff  = new Date(last);
+  cutoff.setMonth(cutoff.getMonth() - months);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const idx = dates.findIndex(d => d >= cutoffStr);
+  return idx === -1 ? { dates, prices } : { dates: dates.slice(idx), prices: prices.slice(idx) };
+}
+
+function _updatePeriodBtns() {
+  [1, 6, 12].forEach(m => {
+    const btn = document.getElementById(`btn${m}M`);
+    if (!btn) return;
+    const active = m === _activePeriod;
+    btn.style.background = active ? 'var(--primary, #2563eb)' : 'transparent';
+    btn.style.color      = active ? '#fff' : 'var(--text-muted, #64748b)';
+    btn.style.fontWeight = active ? '600' : '400';
+  });
+}
+
+function _drawChart(symbol, dates, prices) {
   const canvas = document.getElementById('lookupChart');
   const ctx    = canvas.getContext('2d');
 

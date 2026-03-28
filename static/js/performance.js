@@ -528,6 +528,7 @@ function renderHoldingsChart(dates, holdingsSeries) {
           },
         },
         tooltip: {
+          itemSort:  (a, b) => b.parsed.y - a.parsed.y,
           callbacks: {
             title:      ctx => ctx[0].label,
             label:      ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(2)}%`,

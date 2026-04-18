@@ -58,8 +58,9 @@ _app_logger = logging.getLogger("portfolio.app")
 # ── Security: localhost-only + hardened headers ───────────────────────────────
 
 @app.before_request
-def localhost_only():
-    if request.remote_addr not in ("127.0.0.1", "::1"):
+def local_network_only():
+    addr = request.remote_addr or ""
+    if addr not in ("127.0.0.1", "::1") and not addr.startswith("192.168."):
         abort(403)
 
 
@@ -189,6 +190,17 @@ def _parse_positive_float(value, field_name: str) -> float:
         raise ValueError(f"{field_name} is not a valid number")
     if n < 0:
         raise ValueError(f"{field_name} cannot be negative")
+    return n
+
+
+def _parse_float(value, field_name: str) -> float:
+    """Like _parse_positive_float but allows negative values (for sell transactions)."""
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be a number")
+    if math.isnan(n) or math.isinf(n):
+        raise ValueError(f"{field_name} is not a valid number")
     return n
 
 
@@ -363,9 +375,9 @@ def add_holding():
         return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
 
     try:
-        shares      = _parse_positive_float(data.get("shares") or 0, "Shares")
-        cost_basis  = _parse_positive_float(data["cost_basis"], "Cost Basis")
-        current_val = _parse_positive_float(data["current_value"], "Current Value")
+        shares      = _parse_float(data.get("shares") or 0, "Shares")
+        cost_basis  = _parse_float(data["cost_basis"], "Cost Basis")
+        current_val = _parse_float(data["current_value"], "Current Value")
     except (ValueError, KeyError) as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -416,11 +428,11 @@ def update_holding(hid):
     ticker = (data.get("ticker") or row["ticker"]).strip().upper()
 
     try:
-        new_shares = _parse_positive_float(
+        new_shares = _parse_float(
             data["shares"] if data.get("shares") is not None else row["shares"], "Shares")
-        new_cost   = _parse_positive_float(
+        new_cost   = _parse_float(
             data["cost_basis"] if data.get("cost_basis") is not None else row["cost_basis"], "Cost Basis")
-        new_value  = _parse_positive_float(
+        new_value  = _parse_float(
             data["current_value"] if data.get("current_value") is not None else row["current_value"], "Current Value")
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -506,16 +518,21 @@ def portfolio_summary():
     ]
 
     by_category: dict[str, float] = {}
+    by_category_tickers: dict[str, set] = {}
     for h in holdings:
         cat = h["category"] or "Uncategorized"
         by_category.setdefault(cat, 0)
         by_category[cat] += h["current_value"]
+        by_category_tickers.setdefault(cat, set())
+        key = h["ticker"] if h["ticker"] else f"__no_ticker_{h['id']}"
+        by_category_tickers[cat].add(key)
 
     category_allocation = [
         {
             "category": cat,
             "value": val,
             "percentage": (val / total_value * 100) if total_value else 0,
+            "positions": len(by_category_tickers.get(cat, set())),
         }
         for cat, val in sorted(by_category.items())
     ]
@@ -1071,7 +1088,7 @@ def get_performance():
 
     for h in holdings_rows:
         ticker = (h["ticker"] or "").strip().upper()
-        if not ticker or ticker == "$$CASH":
+        if not ticker or ticker == "$$CASH" or h["asset_type"] == "cash":
             constant_value += h["current_value"]
             continue
         shares_by_ticker[ticker] = shares_by_ticker.get(ticker, 0.0) + h["shares"]
@@ -1107,7 +1124,7 @@ def get_performance():
     portfolio   = pd.Series(0.0, index=close.index)
     untracked   = []
     for ticker, shares in shares_by_ticker.items():
-        if ticker in close.columns:
+        if ticker in close.columns and not close[ticker].isna().all():
             portfolio = portfolio + close[ticker].ffill() * shares
         else:
             untracked.append(ticker)
@@ -1438,4 +1455,4 @@ def export_csv():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", debug=os.getenv("FLASK_ENV") == "development")
+    app.run(host="0.0.0.0", debug=os.getenv("FLASK_ENV") == "development")

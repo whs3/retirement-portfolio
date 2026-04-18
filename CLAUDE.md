@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Development Workflow
+
+After any backend/Flask changes (routes, data processing, API endpoints), always restart the Flask dev server before testing or declaring the task complete.
+
+
+## Libraries & Gotchas
+
+When working with Chart.js, test visual changes by verifying the actual rendered output matches expectations. Don't assume API behavior for properties like itemSort, tooltip callbacks, or tick filtering—check the docs or existing code first.
+
+## Project Overview
+
+This is a Flask + JavaScript retirement portfolio app. Stack: Python/Flask backend, vanilla JS frontend with Chart.js for visualizations, HTML/CSS templates. External API: Financial Modeling Prep (FMP).
+
 ## Commands
 
 ```bash
@@ -37,7 +50,8 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 - Flask-WTF `CSRFProtect` with `X-CSRFToken` header; a global fetch interceptor in `base.html` attaches the token automatically to all mutating requests.
 - Flask-Limiter rate-limits expensive endpoints (refresh-prices, overlap, performance: 10/hour or 10/minute).
 - `_VALID_TICKER` regex validates ticker symbols on all routes that accept them.
-- `_parse_positive_float()` rejects NaN, inf, and negative values for numeric fields.
+- `_parse_positive_float()` rejects NaN, inf, and negative values for numeric fields (used for settings, allocations, etc.).
+- `_parse_float()` rejects NaN and inf but allows negatives — used for holdings shares/cost_basis/current_value to support sell transactions.
 - Settings updates use an `_ALLOWED_SETTINGS` whitelist.
 
 **API surface**
@@ -71,7 +85,7 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 | Page | Template | JS | Description |
 |------|----------|----|-------------|
 | Dashboard | `dashboard.html` | — | Asset allocation doughnut + portfolio totals |
-| Holdings | `holdings.html` | `holdings.js` | CRUD table for all holdings; inline price refresh |
+| Holdings | `holdings.html` | `holdings.js` | CRUD table for all holdings; inline price refresh; supports sell transactions via negative shares/cost_basis/current_value; Ticker Symbol is first field with auto-focus and auto-fetch on input (600 ms debounce); shares support up to 6 decimal places |
 | Rebalance | `rebalance.html` | — | Buy/Sell/Hold recommendations vs target allocations |
 | Audit | `audit.html` | — | Audit log with search/filter |
 | Lookup | `lookup.html` | `lookup.js` | Price history chart for any ticker; auto-loads ^GSPC + ^IXIC on open; analyst recommendations for stocks; fund info + tracked index for ETFs/funds; 1M/3M/6M/YTD/12M period selector on both charts |
@@ -87,7 +101,8 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 **Key backend helpers**
 - `_get_ticker_category(ticker, asset_type)` — returns Morningstar category (ETF/fund) or sector (stock); results cached in `_category_cache` for the server session to avoid repeat API calls.
 - `_extract_fund_index(description)` — uses regex to extract the tracked index name from a fund's description text; maps common index names to yfinance tickers via `_INDEX_TICKER_MAP`.
-- `_parse_positive_float(value, field_name)` — validates numeric input at API boundaries.
+- `_parse_positive_float(value, field_name)` — validates numeric input at API boundaries; rejects negatives.
+- `_parse_float(value, field_name)` — like `_parse_positive_float` but allows negatives; used for holdings fields to support sell transactions.
 
 **Lookup page details**
 - Market Indices section auto-loads S&P 500 (`^GSPC`) and NASDAQ (`^IXIC`) on page open; normalized % change chart with 1M/3M/6M/YTD/12M period buttons.

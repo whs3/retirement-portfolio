@@ -26,60 +26,6 @@
     <div class="card-value" id="gainLoss">—</div>
     <div class="card-sub"   id="gainLossPct">—</div>
   </div>
-  <div class="card summary-card">
-    <div class="card-label">Holdings</div>
-    <div class="card-value" id="holdingCount">—</div>
-  </div>
-</div>
-
-<!-- Category allocation chart + breakdown -->
-<div class="grid-2">
-  <div class="card">
-    <h2 class="card-title">Allocation by Category</h2>
-    <div class="chart-container">
-      <canvas id="categoryChart"></canvas>
-    </div>
-  </div>
-  <div class="card">
-    <h2 class="card-title">Category Breakdown</h2>
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Category</th>
-          <th class="text-right">Value</th>
-          <th class="text-right">Allocation</th>
-        </tr>
-      </thead>
-      <tbody id="categoryBody">
-        <tr><td colspan="3" class="text-center text-muted">Loading…</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<!-- Allocation chart + breakdown -->
-<div class="grid-2">
-  <div class="card">
-    <h2 class="card-title">Asset Allocation</h2>
-    <div class="chart-container">
-      <canvas id="allocationChart"></canvas>
-    </div>
-  </div>
-  <div class="card">
-    <h2 class="card-title">Allocation Breakdown</h2>
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Asset Type</th>
-          <th class="text-right">Value</th>
-          <th class="text-right">Allocation</th>
-        </tr>
-      </thead>
-      <tbody id="allocationBody">
-        <tr><td colspan="3" class="text-center text-muted">Loading…</td></tr>
-      </tbody>
-    </table>
-  </div>
 </div>
 
 <!-- Holdings by ticker -->
@@ -106,6 +52,58 @@
       </thead>
       <tbody id="holdingsBody">
         <tr><td colspan="10" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Category allocation chart + breakdown -->
+<div class="grid-2">
+  <div class="card">
+    <h2 class="card-title">Allocation by Category</h2>
+    <div class="chart-container">
+      <canvas id="categoryChart"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="card-title">Category Breakdown</h2>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th class="text-right">Positions</th>
+          <th class="text-right">Value</th>
+          <th class="text-right">Allocation</th>
+        </tr>
+      </thead>
+      <tbody id="categoryBody">
+        <tr><td colspan="4" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+      <tfoot id="categoryFoot"></tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- Allocation chart + breakdown -->
+<div class="grid-2">
+  <div class="card">
+    <h2 class="card-title">Asset Allocation</h2>
+    <div class="chart-container">
+      <canvas id="allocationChart"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="card-title">Allocation Breakdown</h2>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Asset Type</th>
+          <th class="text-right">Value</th>
+          <th class="text-right">Allocation</th>
+        </tr>
+      </thead>
+      <tbody id="allocationBody">
+        <tr><td colspan="3" class="text-center text-muted">Loading…</td></tr>
       </tbody>
     </table>
   </div>

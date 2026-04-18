@@ -54,7 +54,7 @@ function renderTable() {
     ...h,
     gain:    h.current_value - h.cost_basis,
     gainPct: h.cost_basis > 0 ? (h.current_value - h.cost_basis) / h.cost_basis * 100 : 0,
-    pps:     h.shares > 0 ? h.current_value / h.shares : 0,
+    pps:     h.shares !== 0 ? h.current_value / h.shares : 0,
   }));
 
   rows.sort((a, b) => {
@@ -91,8 +91,8 @@ function renderTable() {
       <td style="white-space:nowrap"><strong>${esc(h.name)}</strong>${notes}</td>
       <td>${esc(h.ticker) || '—'}</td>
       <td>${h.purchase_date || '—'}</td>
-      <td class="text-right">${h.shares > 0 ? h.shares : '—'}</td>
-      <td class="text-right">${h.pps > 0 ? fmt(h.pps) : '—'}</td>
+      <td class="text-right">${h.shares !== 0 ? h.shares : '—'}</td>
+      <td class="text-right">${h.pps !== 0 ? fmt(h.pps) : '—'}</td>
       <td class="text-right">${fmt(h.current_value)}</td>
       <td class="text-right">${fmt(h.cost_basis)}</td>
       <td class="text-right ${cls}">${fmt(h.gain)}</td>
@@ -137,6 +137,7 @@ function openModal(id = null) {
   }
 
   document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('ticker').focus();
 }
 
 function closeModal(event) {
@@ -236,7 +237,7 @@ async function refreshPrices() {
 
 async function fetchPrice() {
   const ticker = document.getElementById('ticker').value.trim().toUpperCase();
-  if (!ticker) { alert('Enter a ticker symbol first.'); return; }
+  if (!ticker) return;
 
   const display = document.getElementById('priceDisplay');
   display.textContent  = 'Fetching…';
@@ -285,10 +286,16 @@ document.addEventListener('DOMContentLoaded', () => {
   loadHoldings();
   document.getElementById('holdingsSearch').addEventListener('input', renderTable);
   document.getElementById('shares').addEventListener('input', recalcCurrentValue);
+
+  let fetchTimer = null;
   document.getElementById('ticker').addEventListener('input', () => {
-    if (document.getElementById('ticker').value.toUpperCase() === '$$CASH') {
+    const val = document.getElementById('ticker').value.toUpperCase();
+    if (val === '$$CASH') {
       document.getElementById('assetType').value = 'cash';
       recalcCurrentValue();
+      return;
     }
+    clearTimeout(fetchTimer);
+    fetchTimer = setTimeout(fetchPrice, 600);
   });
 });

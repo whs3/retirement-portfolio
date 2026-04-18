@@ -4,7 +4,8 @@ let lookupChart   = null;
 let indicesChart  = null;
 let _lookupSeq    = 0;   // incremented on every lookup; stale responses are ignored
 
-const _PERIOD_LABELS = { 1: '1 Month', 3: '3 Months', 6: '6 Months', ytd: 'YTD', 12: '12 Months' };
+const _PERIOD_LABELS  = { 1: '1 Month', 3: '3 Months', 6: '6 Months', ytd: 'YTD', 12: '12 Months' };
+const _CHANGE_LABELS  = { 1: '1-Month Change', 3: '3-Month Change', 6: '6-Month Change', ytd: 'YTD Change', 12: '12-Month Change' };
 
 // ── Market Indices (auto-loaded on page open) ─────────────────────────────────
 
@@ -31,16 +32,6 @@ async function loadMarketIndices() {
     statusEl.style.display = 'none';
     sectionEl.style.display = '';
 
-    results.forEach((data, i) => {
-      const s    = INDEX_SYMBOLS[i];
-      const isUp = data.change >= 0;
-      const sign = isUp ? '+' : '';
-      document.getElementById(`indexStats_${i}`).innerHTML = `
-        <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${esc(s.label)}</div>
-        <div style="font-size:1.4rem;font-weight:700;color:${s.color}">${fmtPrice(data.current_price)}</div>
-        <div style="font-size:0.9rem;font-weight:600" class="${isUp ? 'text-success' : 'text-danger'}">${sign}${fmtPrice(data.change)} (${sign}${data.change_pct.toFixed(2)}%)</div>`;
-    });
-
     renderIndicesChart(results);
 
   } catch (err) {
@@ -58,6 +49,7 @@ function renderIndicesChart(results) {
   _drawIndicesChart(results, 12);
   document.getElementById('indicesPeriodBtns').style.display = '';
   _updateIndicesPeriodBtns();
+  _updateIndexStats(results, 12);
 }
 
 function setIndicesPeriod(months) {
@@ -65,6 +57,45 @@ function setIndicesPeriod(months) {
   _activeIndicesPeriod = months;
   _drawIndicesChart(_indicesFullResults, months);
   _updateIndicesPeriodBtns();
+  _updateIndexStats(_indicesFullResults, months);
+}
+
+function _updateIndexStats(results, months) {
+  // Find the cutoff date for the selected period (same logic as _drawIndicesChart)
+  const dateSets    = results.map(d => new Set(d.dates));
+  let   commonDates = results[0].dates.filter(d => dateSets.every(s => s.has(d)));
+
+  let cutoffStr = null;
+  if (months !== 12) {
+    if (months === 'ytd') {
+      const year = new Date(commonDates[commonDates.length - 1] + 'T00:00:00').getFullYear();
+      cutoffStr = `${year}-01-01`;
+    } else {
+      const last   = new Date(commonDates[commonDates.length - 1] + 'T00:00:00');
+      const cutoff = new Date(last);
+      cutoff.setMonth(cutoff.getMonth() - months);
+      cutoffStr = cutoff.toISOString().slice(0, 10);
+    }
+  }
+  if (cutoffStr) {
+    const idx = commonDates.findIndex(d => d >= cutoffStr);
+    if (idx !== -1) commonDates = commonDates.slice(idx);
+  }
+
+  results.forEach((data, i) => {
+    const s        = INDEX_SYMBOLS[i];
+    const priceMap = new Map(data.dates.map((d, j) => [d, data.prices[j]]));
+    const startPrice   = priceMap.get(commonDates[0]);
+    const currentPrice = data.current_price;
+    const change       = currentPrice - startPrice;
+    const changePct    = (change / startPrice) * 100;
+    const isUp         = change >= 0;
+    const sign         = isUp ? '+' : '';
+    document.getElementById(`indexStats_${i}`).innerHTML = `
+      <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${esc(s.label)}</div>
+      <div style="font-size:1.4rem;font-weight:700;color:${s.color}">${fmtPrice(currentPrice)}</div>
+      <div style="font-size:0.9rem;font-weight:600" class="${isUp ? 'text-success' : 'text-danger'}">${sign}${fmtPrice(change)} (${sign}${changePct.toFixed(2)}%)</div>`;
+  });
 }
 
 function _updateIndicesPeriodBtns() {
@@ -329,6 +360,7 @@ function renderChart(symbol, dates, prices) {
   _drawChart(symbol, dates, prices);
   document.getElementById('periodBtns').style.display = '';
   _updatePeriodBtns();
+  _updatePriceChangeStat(prices);
 }
 
 function setChartPeriod(months) {
@@ -337,6 +369,25 @@ function setChartPeriod(months) {
   const { dates, prices } = _sliceByMonths(_fullChartData.dates, _fullChartData.prices, months);
   _drawChart(_fullChartData.symbol, dates, prices);
   _updatePeriodBtns();
+  _updatePriceChangeStat(prices);
+}
+
+function _updatePriceChangeStat(slicedPrices) {
+  if (!slicedPrices || slicedPrices.length < 2) return;
+  const startPrice   = slicedPrices[0];
+  const currentPrice = slicedPrices[slicedPrices.length - 1];
+  const change       = currentPrice - startPrice;
+  const changePct    = (change / startPrice) * 100;
+  const isUp         = change >= 0;
+  const sign         = isUp ? '+' : '';
+
+  const labelEl  = document.getElementById('priceChangeLabel');
+  const changeEl = document.getElementById('priceChange');
+  if (labelEl)  labelEl.textContent  = _CHANGE_LABELS[_activePeriod] ?? '12-Month Change';
+  if (changeEl) {
+    changeEl.textContent = `${sign}${fmtPrice(change)} (${sign}${changePct.toFixed(2)}%)`;
+    changeEl.className   = isUp ? 'text-success' : 'text-danger';
+  }
 }
 
 function _sliceByMonths(dates, prices, months) {

@@ -45,7 +45,6 @@ async function loadSummary() {
 
   document.getElementById('totalValue').textContent   = fmt(data.total_value);
   document.getElementById('totalCost').textContent    = fmt(data.total_cost);
-  document.getElementById('holdingCount').textContent = data.count;
 
   const glEl    = document.getElementById('gainLoss');
   const glPctEl = document.getElementById('gainLossPct');
@@ -189,22 +188,36 @@ function renderCategoryChart(categoryAllocation) {
 
 function renderCategoryTable(categoryAllocation) {
   const tbody = document.getElementById('categoryBody');
+  const tfoot = document.getElementById('categoryFoot');
   if (!categoryAllocation || !categoryAllocation.length) {
-    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No holdings yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No holdings yet.</td></tr>';
+    tfoot.innerHTML = '';
     return;
   }
   tbody.innerHTML = categoryAllocation.map(a => `
     <tr>
       <td>${esc(a.category)}</td>
+      <td class="text-right">${a.positions}</td>
       <td class="text-right">${fmt(a.value)}</td>
       <td class="text-right">${fmtPct(a.percentage)}</td>
     </tr>
   `).join('');
+
+  const totalPositions = categoryAllocation.reduce((s, a) => s + a.positions, 0);
+  const totalValue     = categoryAllocation.reduce((s, a) => s + a.value, 0);
+  const totalPct       = categoryAllocation.reduce((s, a) => s + a.percentage, 0);
+  tfoot.innerHTML = `
+    <tr style="font-weight:600;border-top:2px solid var(--border)">
+      <td>Total</td>
+      <td class="text-right">${totalPositions}</td>
+      <td class="text-right">${fmt(totalValue)}</td>
+      <td class="text-right">${fmtPct(totalPct)}</td>
+    </tr>`;
 }
 
 let holdingsGroups = [];
-let sortCol = 'ticker';
-let sortDir = 1;  // 1 = asc, -1 = desc
+let sortCol = 'current_value';
+let sortDir = -1;  // 1 = asc, -1 = desc
 
 async function loadHoldings() {
   const res      = await fetch('/api/holdings');

@@ -461,7 +461,16 @@ function renderHoldingsChart(dates, holdingsSeries) {
     if (!seenMonths.has(ym)) { seenMonths.add(ym); monthStarts.add(d); }
   }
 
-  const datasets = holdingsSeries.map((h, i) => {
+  // Sort by end-of-period % change (highest first) before assigning colors,
+  // so tooltip order and line colors are always in sync without relying on
+  // Chart.js itemSort (which corrupts datasetIndex references in labelColor).
+  const sortedSeries = [...holdingsSeries].sort((a, b) => {
+    const aPct = a.values[0] ? (a.values[a.values.length - 1] - a.values[0]) / a.values[0] : 0;
+    const bPct = b.values[0] ? (b.values[b.values.length - 1] - b.values[0]) / b.values[0] : 0;
+    return bPct - aPct;
+  });
+
+  const datasets = sortedSeries.map((h, i) => {
     const base = h.values[0] || 1;
     return {
       label:            h.ticker,
@@ -516,19 +525,22 @@ function renderHoldingsChart(dates, holdingsSeries) {
           position: 'top',
           labels: {
             generateLabels(chart) {
-              return chart.data.datasets.map((ds, i) => ({
-                text:        ds.label,
-                fillStyle:   ds.borderColor,
-                strokeStyle: ds.borderColor,
-                lineWidth:   0,
-                hidden:      !chart.getDatasetMeta(i).visible,
-                datasetIndex: i,
-              }));
+              return chart.data.datasets.map((ds, i) => {
+                const last = ds.data[ds.data.length - 1];
+                const sign = last >= 0 ? '+' : '';
+                return {
+                  text:        `${ds.label} (${sign}${last.toFixed(2)}%)`,
+                  fillStyle:   ds.borderColor,
+                  strokeStyle: ds.borderColor,
+                  lineWidth:   0,
+                  hidden:      !chart.getDatasetMeta(i).visible,
+                  datasetIndex: i,
+                };
+              });
             },
           },
         },
         tooltip: {
-          itemSort:  (a, b) => b.parsed.y - a.parsed.y,
           callbacks: {
             title:      ctx => ctx[0].label,
             label:      ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(2)}%`,

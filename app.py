@@ -3,6 +3,7 @@ import io
 import logging
 import math
 import os
+import pathlib
 import re
 import secrets
 import sqlite3
@@ -70,6 +71,30 @@ def security_headers(response):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     return response
+
+
+def _detect_iana_timezone():
+    tz = os.environ.get("TZ", "")
+    if tz:
+        return tz
+    try:
+        return pathlib.Path("/etc/timezone").read_text().strip()
+    except OSError:
+        pass
+    p = pathlib.Path("/etc/localtime")
+    if p.is_symlink():
+        target = str(p.resolve())
+        idx = target.find("zoneinfo/")
+        if idx != -1:
+            return target[idx + 9:]
+    return "UTC"
+
+_SERVER_TIMEZONE = _detect_iana_timezone()
+
+
+@app.context_processor
+def inject_server_timezone():
+    return {"server_timezone": _SERVER_TIMEZONE}
 
 
 # ── Input helpers ─────────────────────────────────────────────────────────────

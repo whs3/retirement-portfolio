@@ -76,7 +76,7 @@ async function loadPerformance() {
     }
 
     document.getElementById('asOfDate').textContent =
-      'As of ' + new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+      'As of ' + new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: document.querySelector('meta[name="server-timezone"]').content });
 
     _perfFullData = data;
     document.getElementById('perfPeriodRow').style.display = 'flex';

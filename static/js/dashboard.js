@@ -296,7 +296,7 @@ function renderHoldingsTable() {
 
 function updateTimestamp() {
   document.getElementById('lastUpdated').textContent =
-    'As of ' + new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+    'As of ' + new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: document.querySelector('meta[name="server-timezone"]').content });
 }
 
 async function refreshPrices() {

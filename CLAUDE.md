@@ -76,7 +76,7 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 | GET | `/api/performance` | Daily portfolio value history + per-holding series + per-category series |
 
 **Frontend**
-- `templates/base.html` — shared nav, Chart.js CDN import, CSRF meta tag, global fetch interceptor.
+- `templates/base.html` — shared nav, Chart.js CDN import, CSRF meta tag, server-timezone meta tag, global fetch interceptor.
 - One template + one JS file per page: `dashboard`, `holdings`, `rebalance`, `audit`, `lookup`, `overlap`, `performance`.
 - No framework; fetch API calls the JSON endpoints above.
 - Chart.js (loaded from jsDelivr CDN) renders charts throughout the app.
@@ -99,6 +99,7 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 - Financial Modeling Prep (FMP) — full ETF holdings when an API key is configured via Settings.
 
 **Key backend helpers**
+- `_detect_iana_timezone()` — detects the server's IANA timezone (e.g. `America/New_York`) from `/etc/timezone`, `/etc/localtime` symlink, or `TZ` env var; result is cached in `_SERVER_TIMEZONE` and injected into all templates via a context processor so frontend timestamps display in the server's local timezone.
 - `_get_ticker_category(ticker, asset_type)` — returns Morningstar category (ETF/fund) or sector (stock); results cached in `_category_cache` for the server session to avoid repeat API calls.
 - `_extract_fund_index(description)` — uses regex to extract the tracked index name from a fund's description text; maps common index names to yfinance tickers via `_INDEX_TICKER_MAP`.
 - `_parse_positive_float(value, field_name)` — validates numeric input at API boundaries; rejects negatives.

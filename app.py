@@ -1236,7 +1236,7 @@ def get_performance():
     end_val   = values[-1]
     gain      = end_val - start_val
     gain_pct  = (gain / start_val * 100) if start_val else 0
-    peak_val  = max(values)
+    peak_val  = max(max(values), db_total)
     trough    = min(values)
 
     # Monthly breakdown: first and last trading day of each calendar month

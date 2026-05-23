@@ -45,7 +45,7 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 - `TEMPLATES_AUTO_RELOAD = True` — template changes are picked up without restarting the server (Python code changes still require a restart).
 
 **Security**
-- `localhost_only()` before_request hook — rejects any request not from 127.0.0.1 / ::1.
+- `local_network_only()` before_request hook — rejects any request not from 127.0.0.1, ::1, or 192.168.x.x.
 - `security_headers()` after_request hook — adds X-Content-Type-Options, X-Frame-Options, X-XSS-Protection.
 - Flask-WTF `CSRFProtect` with `X-CSRFToken` header; a global fetch interceptor in `base.html` attaches the token automatically to all mutating requests.
 - Flask-Limiter rate-limits expensive endpoints (refresh-prices, overlap, performance: 10/hour or 10/minute).
@@ -84,10 +84,10 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 **Page summaries**
 | Page | Template | JS | Description |
 |------|----------|----|-------------|
-| Dashboard | `dashboard.html` | — | Asset allocation doughnut + portfolio totals |
+| Dashboard | `dashboard.html` | `dashboard.js` | Asset allocation doughnut + portfolio totals |
 | Holdings | `holdings.html` | `holdings.js` | CRUD table for all holdings; inline price refresh; supports sell transactions via negative shares/cost_basis/current_value; Ticker Symbol is first field with auto-focus and auto-fetch on input (600 ms debounce); shares support up to 6 decimal places |
-| Rebalance | `rebalance.html` | — | Buy/Sell/Hold recommendations vs target allocations |
-| Audit | `audit.html` | — | Audit log with search/filter |
+| Rebalance | `rebalance.html` | `rebalance.js` | Buy/Sell/Hold recommendations vs target allocations |
+| Audit | `audit.html` | `audit.js` | Audit log with search/filter |
 | Lookup | `lookup.html` | `lookup.js` | Price history chart for any ticker; auto-loads ^GSPC + ^IXIC on open; analyst recommendations for stocks; fund info + tracked index for ETFs/funds; 1M/3M/6M/YTD/12M period selector on both charts |
 | Overlap | `overlap.html` | `overlap.js` | ETF holdings overlap — doughnut chart + full table |
 | Performance | `performance.html` | `performance.js` | Portfolio value over time with 3M/6M/YTD/12M period selector; stacked category breakdown chart; individual holdings % change chart; monthly gain/loss table |

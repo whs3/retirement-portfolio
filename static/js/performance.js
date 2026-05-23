@@ -157,7 +157,7 @@ function _computeSummary(values, currentEndValue) {
     end_value:   currentEndValue,
     gain:        gain,
     gain_pct:    startVal ? (gain / startVal * 100) : 0,
-    peak_value:  Math.max(...values),
+    peak_value:  Math.max(...values, currentEndValue),
   };
 }
 

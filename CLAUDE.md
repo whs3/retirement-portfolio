@@ -86,7 +86,7 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 | Page | Template | JS | Description |
 |------|----------|----|-------------|
 | Dashboard | `dashboard.html` | `dashboard.js` | By Owner + By Account Type doughnut charts + portfolio totals; category allocation table sorted by value |
-| Holdings | `holdings.html` | `holdings.js` | CRUD table for all holdings; Owner and Account Type filter dropdowns; search summary shows totals row; inline price refresh; supports sell transactions via negative shares/cost_basis/current_value; Ticker Symbol is first field with auto-focus and auto-fetch on input (600 ms debounce); shares support up to 6 decimal places |
+| Holdings | `holdings.html` | `holdings.js` | CRUD table for all holdings; Owner and Account Type filter dropdowns; search summary shows totals row; inline price refresh; supports sell transactions via negative shares/cost_basis/current_value; Ticker Symbol is first field with auto-focus and auto-fetch on input (600 ms debounce); shares support up to 6 decimal places; second item in nav bar |
 | Rebalance | `rebalance.html` | `rebalance.js` | Buy/Sell/Hold recommendations vs target allocations; zero-target categories filtered from chart and table |
 | Audit | `audit.html` | `audit.js` | Audit log with search/filter |
 | Lookup | `lookup.html` | `lookup.js` | Price history chart for any ticker; auto-loads ^GSPC + ^IXIC on open; analyst recommendations for stocks; fund info + tracked index for ETFs/funds; 1M/3M/6M/YTD/12M period selector on both charts |
@@ -100,6 +100,8 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 - Financial Modeling Prep (FMP) — full ETF holdings when an API key is configured via Settings.
 
 **Price fetching note**: Both `get_price` and `refresh_prices` use `info.get("regularMarketPrice")` as the primary price source, falling back to `fast_info.last_price` only if unavailable. `fast_info.last_price` can lag for mutual funds (e.g. NAV not yet reflected); `regularMarketPrice` matches what Yahoo Finance displays.
+
+**Performance cash-ticker handling**: `get_performance()` does a first pass to identify `cash_tickers` — any ticker that has at least one `asset_type="cash"` entry in the DB (e.g. SPAXX). All entries for those tickers are routed to `constant_value` regardless of the individual row's asset_type. This prevents money-market funds from appearing in `shares_by_ticker` with negative share counts and no yfinance price history, which would otherwise cause an artificial portfolio drop on the one day a price becomes available.
 
 **Key backend helpers**
 - `_detect_iana_timezone()` — detects the server's IANA timezone (e.g. `America/New_York`) from `/etc/timezone`, `/etc/localtime` symlink, or `TZ` env var; result is cached in `_SERVER_TIMEZONE` and injected into all templates via a context processor so frontend timestamps display in the server's local timezone.

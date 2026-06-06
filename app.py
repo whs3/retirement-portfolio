@@ -1142,13 +1142,32 @@ def get_performance():
     # DB total matches the dashboard exactly
     db_total = sum(h["current_value"] for h in holdings_rows)
 
-    # Sum shares by ticker; accumulate untickered value as constant
+    # Tickers that have at least one cash-type entry (e.g. money market funds like
+    # SPAXX) must be treated entirely as constant-value, even if a separate sell
+    # transaction was recorded with a different asset_type.  Mixing them into
+    # shares_by_ticker with a fixed-NAV price that has almost no yfinance history
+    # produces an artificial portfolio drop on the one day the price appears.
+    cash_tickers: set[str] = set()
+    for h in holdings_rows:
+        t = (h["ticker"] or "").strip().upper()
+        if t and t != "$$CASH" and h["asset_type"] == "cash":
+            cash_tickers.add(t)
+
+    # Net current_value per ticker — used as the constant contribution when a
+    # ticker turns out to have no usable price history (untracked path).
+    current_value_by_ticker: dict[str, float] = {}
+    for h in holdings_rows:
+        t = (h["ticker"] or "").strip().upper()
+        if t and t != "$$CASH":
+            current_value_by_ticker[t] = current_value_by_ticker.get(t, 0.0) + h["current_value"]
+
+    # Sum shares by ticker; accumulate untickered / cash-equivalent value as constant
     shares_by_ticker: dict[str, float] = {}
     constant_value = 0.0
 
     for h in holdings_rows:
         ticker = (h["ticker"] or "").strip().upper()
-        if not ticker or ticker == "$$CASH" or h["asset_type"] == "cash":
+        if not ticker or ticker == "$$CASH" or h["asset_type"] == "cash" or ticker in cash_tickers:
             constant_value += h["current_value"]
             continue
         shares_by_ticker[ticker] = shares_by_ticker.get(ticker, 0.0) + h["shares"]
@@ -1192,7 +1211,7 @@ def get_performance():
             portfolio = portfolio + close[ticker].ffill().fillna(0) * shares
         else:
             untracked.append(ticker)
-            constant_value += shares_by_ticker[ticker]   # treat as constant
+            constant_value += current_value_by_ticker.get(ticker, 0.0)
 
     portfolio = portfolio + constant_value
     portfolio = portfolio.dropna()

@@ -15,8 +15,28 @@ const TYPE_COLORS = {
   mutual_fund: '#7c3aed',
 };
 
-let allocationChart = null;
-let categoryChart = null;
+let allocationChart   = null;
+let categoryChart     = null;
+let ownerChart        = null;
+let accountTypeChart  = null;
+
+const OWNER_COLORS = {
+  'Akiko':       '#db2777',
+  'Bill':        '#2563eb',
+  'Joint':       '#16a34a',
+  'Unassigned':  '#94a3b8',
+};
+
+const ACCOUNT_TYPE_COLORS = {
+  '401k':        '#16a34a',
+  '403b':        '#15803d',
+  'Broker':      '#0891b2',
+  'Cash Management': '#65a30d',
+  'IRA':         '#d97706',
+  'Rollover IRA':'#7c3aed',
+  'Roth IRA':    '#ea580c',
+  'Unassigned':  '#94a3b8',
+};
 
 // Palette for dynamically-generated category colors (cycles if more than 12 categories)
 const CATEGORY_COLORS = [
@@ -55,10 +75,14 @@ async function loadSummary() {
   glPctEl.textContent = (pos ? '+' : '') + fmtPct(data.gain_loss_pct);
   glPctEl.className   = 'card-sub '   + (pos ? 'text-success' : 'text-danger');
 
-  renderAllocationChart(data.allocation);
-  renderAllocationTable(data.allocation);
-  renderCategoryChart(data.category_allocation);
-  renderCategoryTable(data.category_allocation);
+  const catAlloc     = [...(data.category_allocation || [])].sort((a, b) => b.value - a.value);
+  const ownerAlloc   = (data.owner_allocation || []).filter(a => a.owner !== 'Unassigned').sort((a, b) => b.value - a.value);
+  const accountAlloc = (data.account_type_allocation || []).filter(a => a.account_type !== 'Unassigned').sort((a, b) => b.value - a.value);
+
+  renderCategoryChart(catAlloc);
+  renderCategoryTable(catAlloc);
+  renderOwnerChart(ownerAlloc);
+  renderAccountTypeChart(accountAlloc);
 }
 
 function renderAllocationChart(allocation) {
@@ -128,6 +152,98 @@ function renderAllocationTable(allocation) {
       <td class="text-right">${fmtPct(a.percentage)}</td>
     </tr>
   `).join('');
+}
+
+function renderOwnerChart(ownerAllocation) {
+  const canvas = document.getElementById('ownerChart');
+  const ctx    = canvas.getContext('2d');
+
+  if (ownerChart) ownerChart.destroy();
+
+  if (!ownerAllocation.length) {
+    canvas.parentElement.innerHTML = '<p class="text-muted text-center">No holdings yet.</p>';
+    document.getElementById('ownerBody').innerHTML =
+      '<tr><td colspan="3" class="text-center text-muted">No holdings yet.</td></tr>';
+    return;
+  }
+
+  const colors = ownerAllocation.map(a => OWNER_COLORS[a.owner] ?? '#94a3b8');
+
+  ownerChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels:   ownerAllocation.map(a => a.owner),
+      datasets: [{ data: ownerAllocation.map(a => a.value), backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            generateLabels: (chart) => chart.data.labels.map((label, i) => ({
+              text: `${label} (${ownerAllocation[i].percentage.toFixed(1)}%)`,
+              fillStyle: colors[i], strokeStyle: '#fff', lineWidth: 2, hidden: false, index: i,
+            })),
+          },
+        },
+        tooltip: { callbacks: { label: (ctx) => ` ${fmt(ownerAllocation[ctx.dataIndex].value)} (${fmtPct(ownerAllocation[ctx.dataIndex].percentage)})` } },
+      },
+    },
+  });
+
+  document.getElementById('ownerBody').innerHTML = ownerAllocation.map(a => `
+    <tr>
+      <td>${esc(a.owner)}</td>
+      <td class="text-right">${fmt(a.value)}</td>
+      <td class="text-right">${fmtPct(a.percentage)}</td>
+    </tr>`).join('');
+}
+
+function renderAccountTypeChart(accountTypeAllocation) {
+  const canvas = document.getElementById('accountTypeChart');
+  const ctx    = canvas.getContext('2d');
+
+  if (accountTypeChart) accountTypeChart.destroy();
+
+  if (!accountTypeAllocation.length) {
+    canvas.parentElement.innerHTML = '<p class="text-muted text-center">No holdings yet.</p>';
+    document.getElementById('accountTypeBody').innerHTML =
+      '<tr><td colspan="3" class="text-center text-muted">No holdings yet.</td></tr>';
+    return;
+  }
+
+  const colors = accountTypeAllocation.map(a => ACCOUNT_TYPE_COLORS[a.account_type] ?? '#94a3b8');
+
+  accountTypeChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels:   accountTypeAllocation.map(a => a.account_type),
+      datasets: [{ data: accountTypeAllocation.map(a => a.value), backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            generateLabels: (chart) => chart.data.labels.map((label, i) => ({
+              text: `${label} (${accountTypeAllocation[i].percentage.toFixed(1)}%)`,
+              fillStyle: colors[i], strokeStyle: '#fff', lineWidth: 2, hidden: false, index: i,
+            })),
+          },
+        },
+        tooltip: { callbacks: { label: (ctx) => ` ${fmt(accountTypeAllocation[ctx.dataIndex].value)} (${fmtPct(accountTypeAllocation[ctx.dataIndex].percentage)})` } },
+      },
+    },
+  });
+
+  document.getElementById('accountTypeBody').innerHTML = accountTypeAllocation.map(a => `
+    <tr>
+      <td>${esc(a.account_type)}</td>
+      <td class="text-right">${fmt(a.value)}</td>
+      <td class="text-right">${fmtPct(a.percentage)}</td>
+    </tr>`).join('');
 }
 
 function renderCategoryChart(categoryAllocation) {
@@ -263,7 +379,7 @@ function sortHoldings(col) {
 function renderHoldingsTable() {
   const tbody = document.getElementById('holdingsBody');
 
-  const sorted = [...holdingsGroups].sort((a, b) => {
+  const sorted = [...holdingsGroups].filter(g => g.shares !== 0 && g.current_value > 0).sort((a, b) => {
     const av = a[sortCol] ?? '';
     const bv = b[sortCol] ?? '';
     if (typeof av === 'string') return av.localeCompare(bv) * sortDir;

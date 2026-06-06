@@ -84,30 +84,47 @@
   </div>
 </div>
 
-<!-- Allocation chart + breakdown -->
+<!-- Owner + Account Type charts -->
 <div class="grid-2">
   <div class="card">
-    <h2 class="card-title">Asset Allocation</h2>
+    <h2 class="card-title">By Owner</h2>
     <div class="chart-container">
-      <canvas id="allocationChart"></canvas>
+      <canvas id="ownerChart"></canvas>
     </div>
-  </div>
-  <div class="card">
-    <h2 class="card-title">Allocation Breakdown</h2>
-    <table class="table">
+    <table class="table" style="margin-top:0.75rem">
       <thead>
         <tr>
-          <th>Asset Type</th>
+          <th>Owner</th>
           <th class="text-right">Value</th>
           <th class="text-right">Allocation</th>
         </tr>
       </thead>
-      <tbody id="allocationBody">
+      <tbody id="ownerBody">
+        <tr><td colspan="3" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2 class="card-title">By Account Type</h2>
+    <div class="chart-container">
+      <canvas id="accountTypeChart"></canvas>
+    </div>
+    <table class="table" style="margin-top:0.75rem">
+      <thead>
+        <tr>
+          <th>Account Type</th>
+          <th class="text-right">Value</th>
+          <th class="text-right">Allocation</th>
+        </tr>
+      </thead>
+      <tbody id="accountTypeBody">
         <tr><td colspan="3" class="text-center text-muted">Loading…</td></tr>
       </tbody>
     </table>
   </div>
 </div>
+
+
 {% endblock %}
 
 {% block scripts %}

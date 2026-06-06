@@ -279,6 +279,16 @@ def init_db():
         conn.commit()
     except sqlite3.OperationalError:
         pass  # column already exists
+    try:
+        conn.execute("ALTER TABLE holdings ADD COLUMN owner TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE holdings ADD COLUMN account_type TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
     # Migrate target_allocations: rename asset_type → category if needed
     cols = [row[1] for row in conn.execute("PRAGMA table_info(target_allocations)")]
     if "asset_type" in cols and "category" not in cols:
@@ -414,14 +424,16 @@ def add_holding():
     db = get_db()
     cur = db.execute(
         """INSERT INTO holdings
-               (name, ticker, asset_type, category, shares, cost_basis, current_value,
-                purchase_date, notes, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (name, ticker, asset_type, category, owner, account_type, shares,
+                cost_basis, current_value, purchase_date, notes, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data["name"].strip(),
             (data.get("ticker") or "").strip().upper(),
             data["asset_type"],
             (data.get("category") or "").strip(),
+            (data.get("owner") or "").strip(),
+            (data.get("account_type") or "").strip(),
             shares,
             cost_basis,
             current_val,
@@ -469,14 +481,16 @@ def update_holding(hid):
     now = datetime.utcnow().isoformat()
     db.execute(
         """UPDATE holdings
-           SET name=?, ticker=?, asset_type=?, category=?, shares=?, cost_basis=?,
-               current_value=?, purchase_date=?, notes=?, updated_at=?
+           SET name=?, ticker=?, asset_type=?, category=?, owner=?, account_type=?,
+               shares=?, cost_basis=?, current_value=?, purchase_date=?, notes=?, updated_at=?
            WHERE id=?""",
         (
             (data.get("name") or row["name"]).strip(),
             ticker,
             data.get("asset_type") or row["asset_type"],
             (data.get("category") if data.get("category") is not None else row["category"]).strip(),
+            (data.get("owner") if data.get("owner") is not None else (row["owner"] or "")).strip(),
+            (data.get("account_type") if data.get("account_type") is not None else (row["account_type"] or "")).strip(),
             new_shares,
             new_cost,
             new_value,
@@ -562,6 +576,25 @@ def portfolio_summary():
         for cat, val in sorted(by_category.items())
     ]
 
+    by_owner: dict[str, float] = {}
+    by_account_type: dict[str, float] = {}
+    for h in holdings:
+        owner = (h["owner"] or "Unassigned") if "owner" in h.keys() else "Unassigned"
+        acct  = (h["account_type"] or "Unassigned") if "account_type" in h.keys() else "Unassigned"
+        by_owner.setdefault(owner, 0)
+        by_owner[owner] += h["current_value"]
+        by_account_type.setdefault(acct, 0)
+        by_account_type[acct] += h["current_value"]
+
+    owner_allocation = [
+        {"owner": o, "value": v, "percentage": (v / total_value * 100) if total_value else 0}
+        for o, v in sorted(by_owner.items())
+    ]
+    account_type_allocation = [
+        {"account_type": a, "value": v, "percentage": (v / total_value * 100) if total_value else 0}
+        for a, v in sorted(by_account_type.items())
+    ]
+
     return jsonify(
         {
             "total_value": total_value,
@@ -571,6 +604,8 @@ def portfolio_summary():
             "count": len(holdings),
             "allocation": allocation,
             "category_allocation": category_allocation,
+            "owner_allocation": owner_allocation,
+            "account_type_allocation": account_type_allocation,
         }
     )
 
@@ -667,11 +702,11 @@ def get_price(ticker):
     if not _VALID_TICKER.match(symbol):
         return jsonify({"error": "Invalid ticker format"}), 400
     try:
-        t = yf.Ticker(symbol)
-        price = t.fast_info.last_price
+        t    = yf.Ticker(symbol)
+        info = t.info
+        price = info.get("regularMarketPrice") or t.fast_info.last_price
         if price is None:
             return jsonify({"error": "Price unavailable"}), 404
-        info     = t.info
         name     = info.get("longName") or info.get("shortName")
         category = info.get("category") or info.get("sector") or ""
         return jsonify({"ticker": symbol, "price": price, "name": name, "category": category})
@@ -700,12 +735,12 @@ def refresh_prices():
             updated.append(h["ticker"])
             continue
         try:
-            t     = yf.Ticker(h["ticker"])
-            price = t.fast_info.last_price
+            t        = yf.Ticker(h["ticker"])
+            info     = t.info
+            price    = info.get("regularMarketPrice") or t.fast_info.last_price
             if price is None:
                 skipped.append(h["ticker"])
                 continue
-            info     = t.info
             category = info.get("category") or info.get("sector") or h["category"]
             new_value = round(h["shares"] * price, 2)
             db.execute(
@@ -1118,6 +1153,10 @@ def get_performance():
             continue
         shares_by_ticker[ticker] = shares_by_ticker.get(ticker, 0.0) + h["shares"]
 
+    # Drop tickers whose net shares are zero — they contribute nothing and
+    # produce NaN values (NaN * 0 = NaN in pandas) that break JSON serialization.
+    shares_by_ticker = {t: s for t, s in shares_by_ticker.items() if s != 0}
+
     end_dt   = datetime.now()
     start_dt = end_dt - timedelta(days=375)   # a little extra so we can trim to 365
 
@@ -1150,7 +1189,7 @@ def get_performance():
     untracked   = []
     for ticker, shares in shares_by_ticker.items():
         if ticker in close.columns and not close[ticker].isna().all():
-            portfolio = portfolio + close[ticker].ffill() * shares
+            portfolio = portfolio + close[ticker].ffill().fillna(0) * shares
         else:
             untracked.append(ticker)
             constant_value += shares_by_ticker[ticker]   # treat as constant
@@ -1183,7 +1222,7 @@ def get_performance():
     for ticker, shares in shares_by_ticker.items():
         if ticker not in close.columns:
             continue
-        series = (close[ticker].ffill() * shares).reindex(portfolio.index).ffill()
+        series = (close[ticker].ffill() * shares).reindex(portfolio.index).ffill().fillna(0)
         h_values = [round(float(v), 2) for v in series.values]
         holdings_series.append({
             "ticker": ticker,
@@ -1446,7 +1485,7 @@ def export_csv():
     writer = csv.writer(output)
     writer.writerow(
         [
-            "Name", "Ticker", "Asset Type", "Shares",
+            "Name", "Ticker", "Asset Type", "Owner", "Account Type", "Shares",
             "Cost Basis ($)", "Current Value ($)",
             "Gain/Loss ($)", "Gain/Loss (%)",
             "Purchase Date", "Notes",
@@ -1460,6 +1499,8 @@ def export_csv():
                 h["name"],
                 h["ticker"],
                 h["asset_type"].replace("_", " ").title(),
+                h["owner"] or "",
+                h["account_type"] or "",
                 h["shares"],
                 f"{h['cost_basis']:.2f}",
                 f"{h['current_value']:.2f}",

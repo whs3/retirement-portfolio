@@ -41,10 +41,12 @@ function sortHoldings(col) {
 
 function renderTable() {
   const tbody = document.getElementById('holdingsBody');
-  const query = (document.getElementById('holdingsSearch')?.value ?? '').trim().toLowerCase();
+  const query           = (document.getElementById('holdingsSearch')?.value ?? '').trim().toLowerCase();
+  const ownerFilter     = document.getElementById('ownerFilter')?.value ?? '';
+  const accountFilter   = document.getElementById('accountTypeFilter')?.value ?? '';
 
   if (!holdings.length) {
-    tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted" style="padding:2rem">
+    tbody.innerHTML = `<tr><td colspan="13" class="text-center text-muted" style="padding:2rem">
       No holdings yet. Click "Add Holding" to get started.</td></tr>`;
     return;
   }
@@ -64,11 +66,13 @@ function renderTable() {
     return (av - bv) * sortDir;
   });
 
-  const filtered = query
+  const filtered = (query || ownerFilter || accountFilter)
     ? rows.filter(h =>
-        (h.name          ?? '').toLowerCase().includes(query) ||
-        (h.ticker        ?? '').toLowerCase().includes(query) ||
-        (h.purchase_date ?? '').toLowerCase().includes(query)
+        (!query || (h.name ?? '').toLowerCase().includes(query) ||
+                   (h.ticker ?? '').toLowerCase().includes(query) ||
+                   (h.purchase_date ?? '').toLowerCase().includes(query)) &&
+        (!ownerFilter   || h.owner === ownerFilter) &&
+        (!accountFilter || h.account_type === accountFilter)
       )
     : rows;
 
@@ -77,8 +81,50 @@ function renderTable() {
     el.textContent = el.dataset.col === sortCol ? (sortDir === 1 ? ' ↑' : ' ↓') : '';
   });
 
+  const summaryEl = document.getElementById('searchSummary');
+  if ((query || ownerFilter || accountFilter) && filtered.length) {
+    const byTicker = {};
+    for (const h of filtered) {
+      const t = h.ticker || '—';
+      if (!byTicker[t]) byTicker[t] = { shares: 0, current_value: 0 };
+      byTicker[t].shares        += h.shares;
+      byTicker[t].current_value += h.current_value;
+    }
+    const entries = Object.entries(byTicker).sort(([a], [b]) => a.localeCompare(b));
+    const totalShares = entries.reduce((sum, [, s]) => sum + s.shares, 0);
+    const totalValue  = entries.reduce((sum, [, s]) => sum + s.current_value, 0);
+    const summaryRows = entries.map(([ticker, s]) => {
+        const sharesStr = s.shares !== 0 ? parseFloat(s.shares.toFixed(6)).toString() : '—';
+        return `<tr>
+          <td style="padding:0.2rem 1.5rem 0.2rem 0"><strong>${esc(ticker)}</strong></td>
+          <td style="padding:0.2rem 1.5rem 0.2rem 0;text-align:right">${sharesStr}</td>
+          <td style="padding:0.2rem 0;text-align:right">${fmt(s.current_value)}</td>
+        </tr>`;
+      }).join('');
+    const totalSharesStr = totalShares !== 0 ? parseFloat(totalShares.toFixed(6)).toString() : '—';
+    const totalRow = `<tr style="border-top:2px solid var(--border,#dee2e6)">
+      <td style="padding:0.3rem 1.5rem 0.2rem 0"><strong>Total</strong></td>
+      <td style="padding:0.3rem 1.5rem 0.2rem 0;text-align:right"><strong>${totalSharesStr}</strong></td>
+      <td style="padding:0.3rem 0;text-align:right"><strong>${fmt(totalValue)}</strong></td>
+    </tr>`;
+    summaryEl.innerHTML = `
+      <div style="font-size:0.8rem;color:var(--text-muted,#6c757d);margin-bottom:0.35rem;text-transform:uppercase;letter-spacing:0.05em">Search summary by ticker</div>
+      <table style="border-collapse:collapse;font-size:0.9rem">
+        <thead><tr>
+          <th style="text-align:left;padding:0.2rem 1.5rem 0.2rem 0;border-bottom:1px solid var(--border,#dee2e6)">Ticker</th>
+          <th style="text-align:right;padding:0.2rem 1.5rem 0.2rem 0;border-bottom:1px solid var(--border,#dee2e6)">Total Shares</th>
+          <th style="text-align:right;padding:0.2rem 0;border-bottom:1px solid var(--border,#dee2e6)">Total Current Value</th>
+        </tr></thead>
+        <tbody>${summaryRows}${totalRow}</tbody>
+      </table>`;
+    summaryEl.style.display = 'block';
+  } else {
+    summaryEl.style.display = 'none';
+    summaryEl.innerHTML = '';
+  }
+
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted" style="padding:2rem">
+    tbody.innerHTML = `<tr><td colspan="13" class="text-center text-muted" style="padding:2rem">
       No holdings match your search.</td></tr>`;
     return;
   }
@@ -98,6 +144,8 @@ function renderTable() {
       <td class="text-right ${cls}">${fmt(h.gain)}</td>
       <td class="text-right ${cls}">${(h.gain >= 0 ? '+' : '')}${h.gainPct.toFixed(2)}%</td>
       <td>${esc(h.category) || '—'}</td>
+      <td>${esc(h.owner) || '—'}</td>
+      <td>${esc(h.account_type) || '—'}</td>
       <td class="col-actions">
         <button class="btn btn-sm btn-secondary" onclick="openModal(${h.id})">Edit</button>
         <button class="btn btn-sm btn-danger"    onclick="deleteHolding(${h.id}, '${esc(h.name)}')">Delete</button>
@@ -125,8 +173,10 @@ function openModal(id = null) {
     document.getElementById('shares').value       = h.shares;
     document.getElementById('costBasis').value    = h.cost_basis;
     document.getElementById('currentValue').value = h.current_value;
-    document.getElementById('purchaseDate').value = h.purchase_date;
-    document.getElementById('notes').value        = h.notes;
+    document.getElementById('purchaseDate').value  = h.purchase_date;
+    document.getElementById('notes').value         = h.notes;
+    document.getElementById('owner').value         = h.owner || '';
+    document.getElementById('accountType').value   = h.account_type || '';
   } else {
     title.textContent     = 'Add Holding';
     submitBtn.textContent = 'Add Holding';
@@ -168,6 +218,8 @@ async function submitForm(event) {
     current_value: parseFloat(document.getElementById('currentValue').value),
     purchase_date: document.getElementById('purchaseDate').value,
     notes:         document.getElementById('notes').value,
+    owner:         document.getElementById('owner').value,
+    account_type:  document.getElementById('accountType').value,
   };
 
   const id     = document.getElementById('holdingId').value;

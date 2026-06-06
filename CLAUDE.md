@@ -43,6 +43,7 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 - `get_db()` / `close_db()` use Flask's `g` object for per-request connection caching.
 - Two tables: `holdings` and `target_allocations`.
 - `TEMPLATES_AUTO_RELOAD = True` — template changes are picked up without restarting the server (Python code changes still require a restart).
+- `holdings` table includes `owner` (e.g. Akiko, Bill, Joint) and `account_type` (e.g. IRA, 401k, Roth IRA, Broker) columns added via migration in `init_db()`.
 
 **Security**
 - `local_network_only()` before_request hook — rejects any request not from 127.0.0.1, ::1, or 192.168.x.x.
@@ -61,7 +62,7 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 | POST | `/api/holdings` | Create holding |
 | PUT | `/api/holdings/<id>` | Update holding |
 | DELETE | `/api/holdings/<id>` | Delete holding |
-| GET | `/api/portfolio/summary` | Totals + allocation breakdown |
+| GET | `/api/portfolio/summary` | Totals + allocation breakdown (includes `owner_allocation` and `account_type_allocation`) |
 | GET | `/api/allocations` | Target allocations |
 | PUT | `/api/allocations` | Save target allocations (must sum to 100%) |
 | GET | `/api/rebalance` | Buy/Sell/Hold recommendations |
@@ -84,9 +85,9 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 **Page summaries**
 | Page | Template | JS | Description |
 |------|----------|----|-------------|
-| Dashboard | `dashboard.html` | `dashboard.js` | Asset allocation doughnut + portfolio totals |
-| Holdings | `holdings.html` | `holdings.js` | CRUD table for all holdings; inline price refresh; supports sell transactions via negative shares/cost_basis/current_value; Ticker Symbol is first field with auto-focus and auto-fetch on input (600 ms debounce); shares support up to 6 decimal places |
-| Rebalance | `rebalance.html` | `rebalance.js` | Buy/Sell/Hold recommendations vs target allocations |
+| Dashboard | `dashboard.html` | `dashboard.js` | By Owner + By Account Type doughnut charts + portfolio totals; category allocation table sorted by value |
+| Holdings | `holdings.html` | `holdings.js` | CRUD table for all holdings; Owner and Account Type filter dropdowns; search summary shows totals row; inline price refresh; supports sell transactions via negative shares/cost_basis/current_value; Ticker Symbol is first field with auto-focus and auto-fetch on input (600 ms debounce); shares support up to 6 decimal places |
+| Rebalance | `rebalance.html` | `rebalance.js` | Buy/Sell/Hold recommendations vs target allocations; zero-target categories filtered from chart and table |
 | Audit | `audit.html` | `audit.js` | Audit log with search/filter |
 | Lookup | `lookup.html` | `lookup.js` | Price history chart for any ticker; auto-loads ^GSPC + ^IXIC on open; analyst recommendations for stocks; fund info + tracked index for ETFs/funds; 1M/3M/6M/YTD/12M period selector on both charts |
 | Overlap | `overlap.html` | `overlap.js` | ETF holdings overlap — doughnut chart + full table |
@@ -97,6 +98,8 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 **External data sources**
 - `yfinance` — price history, ETF top-holdings, analyst recommendations, fund metadata (default).
 - Financial Modeling Prep (FMP) — full ETF holdings when an API key is configured via Settings.
+
+**Price fetching note**: Both `get_price` and `refresh_prices` use `info.get("regularMarketPrice")` as the primary price source, falling back to `fast_info.last_price` only if unavailable. `fast_info.last_price` can lag for mutual funds (e.g. NAV not yet reflected); `regularMarketPrice` matches what Yahoo Finance displays.
 
 **Key backend helpers**
 - `_detect_iana_timezone()` — detects the server's IANA timezone (e.g. `America/New_York`) from `/etc/timezone`, `/etc/localtime` symlink, or `TZ` env var; result is cached in `_SERVER_TIMEZONE` and injected into all templates via a context processor so frontend timestamps display in the server's local timezone.

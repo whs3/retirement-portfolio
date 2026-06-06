@@ -103,8 +103,9 @@ async function saveAllocations(event) {
 async function loadRebalance() {
   const res  = await fetch('/api/rebalance');
   const data = await res.json();
-  renderRebalanceChart(data.recommendations);
-  renderRecommendations(data.recommendations, data.total_value);
+  const recs = data.recommendations.filter(r => r.target_pct !== 0);
+  renderRebalanceChart(recs);
+  renderRecommendations(recs, data.total_value);
 }
 
 function renderRebalanceChart(recs) {

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Insights — Retirement Portfolio{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Market Insights &amp; Recommendations</h1>
+  <div style="display:flex;align-items:center;gap:0.75rem">
+    <span class="last-updated" id="lastUpdated"></span>
+    <button class="btn btn-secondary" id="refreshBtn" onclick="refreshInsights()">Refresh Data</button>
+  </div>
+</div>
+
+<div id="statusMsg" style="display:none" class="alert"></div>
+
+<p class="text-muted" style="margin-bottom:1rem;font-size:0.9rem">
+  For stocks: analyst consensus and price targets. For ETFs &amp; mutual funds (your main holdings): expense ratio, underlying valuation (P/E, P/B), yield, and beta. These are the practical signals for rebalancing a fund-heavy portfolio.
+</p>
+
+<!-- Market Snapshot -->
+<div class="card" style="margin-bottom:1.5rem">
+  <h2 class="card-title" style="margin-bottom:0.5rem">Market Snapshot</h2>
+  <div id="marketSnapshot" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem">
+    <div class="text-center text-muted" style="padding:1rem">Loading market data…</div>
+  </div>
+  <p id="marketNote" class="text-muted" style="font-size:0.85rem;margin-top:0.75rem;margin-bottom:0"></p>
+</div>
+
+<!-- Portfolio Summary -->
+<div class="summary-cards" id="summaryCards" style="margin-bottom:1.5rem;display:none">
+  <div class="card summary-card">
+    <div class="card-label">Portfolio Value</div>
+    <div class="card-value" id="totalValue">—</div>
+  </div>
+  <div class="card summary-card">
+    <div class="card-label">Analyst-Covered Value</div>
+    <div class="card-value" id="coveredValue">—</div>
+  </div>
+  <div class="card summary-card">
+    <div class="card-label">Avg. Analyst Upside</div>
+    <div class="card-value" id="avgUpside">—</div>
+  </div>
+  <div class="card summary-card">
+    <div class="card-label">Holdings with Coverage</div>
+    <div class="card-value" id="coveredCount">—</div>
+  </div>
+</div>
+
+<!-- Sentiment + Recommendations -->
+<div class="grid-2" style="margin-bottom:1.5rem">
+  <div class="card">
+    <h2 class="card-title">Analyst Sentiment (by Value)</h2>
+    <div class="chart-container" id="sentimentChartContainer" style="height:260px">
+      <canvas id="sentimentChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Key Recommendations</h2>
+    <div id="recommendationsList" style="padding-top:0.25rem">
+      <p class="text-muted">Loading…</p>
+    </div>
+    <div style="margin-top:0.75rem;font-size:0.8rem;color:var(--text-muted)">
+      Recommendations are generated from current analyst consensus and target prices.
+    </div>
+  </div>
+</div>
+
+<!-- Per-Ticker Table -->
+<div class="card">
+  <h2 class="card-title">Ticker-Level Analyst View</h2>
+  <p class="card-description">Aggregated by ticker. Upside calculated from mean analyst price target vs current market price.</p>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th class="th-sortable" onclick="sortInsights('ticker')">Ticker <span class="sort-indicator" data-col="ticker"></span></th>
+          <th class="th-sortable" onclick="sortInsights('name')">Name <span class="sort-indicator" data-col="name"></span></th>
+          <th class="th-sortable text-right" onclick="sortInsights('value')">Value <span class="sort-indicator" data-col="value"></span></th>
+          <th class="th-sortable text-right" onclick="sortInsights('expense')">Expense <span class="sort-indicator" data-col="expense"></span></th>
+          <th class="th-sortable text-right" onclick="sortInsights('pe')">P/E <span class="sort-indicator" data-col="pe"></span></th>
+          <th class="th-sortable text-right" onclick="sortInsights('yield')">Yield <span class="sort-indicator" data-col="yield"></span></th>
+          <th class="th-sortable text-right" onclick="sortInsights('beta')">Beta <span class="sort-indicator" data-col="beta"></span></th>
+          <th class="th-sortable" onclick="sortInsights('rating')">Analyst Rating <span class="sort-indicator" data-col="rating"></span></th>
+          <th class="th-sortable text-right" onclick="sortInsights('num')">Analysts <span class="sort-indicator" data-col="num"></span></th>
+          <th class="th-sortable text-right" onclick="sortInsights('target')">Target Price <span class="sort-indicator" data-col="target"></span></th>
+          <th class="th-sortable text-right" onclick="sortInsights('upside')">Upside <span class="sort-indicator" data-col="upside"></span></th>
+          <th class="th-sortable text-center" onclick="sortInsights('action')">Suggested Action <span class="sort-indicator" data-col="action"></span></th>
+        </tr>
+      </thead>
+      <tbody id="insightsBody">
+        <tr><td colspan="12" class="text-center text-muted">Loading analyst data…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div style="margin-top:1.5rem;font-size:0.8rem;color:var(--text-muted);background:var(--card);padding:0.75rem 1rem;border-radius:6px;border:1px solid var(--border)">
+  <strong>Disclaimer:</strong> This page uses publicly available analyst estimates and market data via Yahoo Finance. It is for informational and educational purposes only and does not constitute investment advice. Past performance is not indicative of future results. Always do your own research or consult a qualified financial advisor.
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/insights.js') }}"></script>
+{% endblock %}

@@ -60,29 +60,39 @@ function esc(s) {
 }
 
 async function loadSummary() {
-  const res  = await fetch('/api/portfolio/summary');
-  const data = await res.json();
+  try {
+    const data = await apiFetch('/api/portfolio/summary');
 
-  document.getElementById('totalValue').textContent   = fmt(data.total_value);
-  document.getElementById('totalCost').textContent    = fmt(data.total_cost);
+    document.getElementById('totalValue').textContent   = fmt(data.total_value);
+    document.getElementById('totalCost').textContent    = fmt(data.total_cost);
 
-  const glEl    = document.getElementById('gainLoss');
-  const glPctEl = document.getElementById('gainLossPct');
-  const pos     = data.gain_loss >= 0;
+    const glEl    = document.getElementById('gainLoss');
+    const glPctEl = document.getElementById('gainLossPct');
+    const pos     = data.gain_loss >= 0;
 
-  glEl.textContent    = fmt(data.gain_loss);
-  glEl.className      = 'card-value ' + (pos ? 'text-success' : 'text-danger');
-  glPctEl.textContent = (pos ? '+' : '') + fmtPct(data.gain_loss_pct);
-  glPctEl.className   = 'card-sub '   + (pos ? 'text-success' : 'text-danger');
+    glEl.textContent    = fmt(data.gain_loss);
+    glEl.className      = 'card-value ' + (pos ? 'text-success' : 'text-danger');
+    glPctEl.textContent = (pos ? '+' : '') + fmtPct(data.gain_loss_pct);
+    glPctEl.className   = 'card-sub '   + (pos ? 'text-success' : 'text-danger');
 
-  const catAlloc     = [...(data.category_allocation || [])].sort((a, b) => b.value - a.value);
-  const ownerAlloc   = (data.owner_allocation || []).filter(a => a.owner !== 'Unassigned').sort((a, b) => b.value - a.value);
-  const accountAlloc = (data.account_type_allocation || []).filter(a => a.account_type !== 'Unassigned').sort((a, b) => b.value - a.value);
+    const catAlloc     = [...(data.category_allocation || [])].sort((a, b) => b.value - a.value);
+    const ownerAlloc   = (data.owner_allocation || []).filter(a => a.owner !== 'Unassigned').sort((a, b) => b.value - a.value);
+    const accountAlloc = (data.account_type_allocation || []).filter(a => a.account_type !== 'Unassigned').sort((a, b) => b.value - a.value);
 
-  renderCategoryChart(catAlloc);
-  renderCategoryTable(catAlloc);
-  renderOwnerChart(ownerAlloc);
-  renderAccountTypeChart(accountAlloc);
+    renderCategoryChart(catAlloc);
+    renderCategoryTable(catAlloc);
+    renderOwnerChart(ownerAlloc);
+    renderAccountTypeChart(accountAlloc);
+  } catch (err) {
+    // Show a non-fatal error in the summary area
+    const status = document.getElementById('refreshStatus');
+    if (status) {
+      status.textContent = `Failed to load portfolio summary: ${err.message}`;
+      status.style.display = 'block';
+      status.classList.add('alert-danger');
+    }
+    console.error('loadSummary failed:', err);
+  }
 }
 
 function renderAllocationChart(allocation) {
@@ -336,38 +346,42 @@ let sortCol = 'current_value';
 let sortDir = -1;  // 1 = asc, -1 = desc
 
 async function loadHoldings() {
-  const res      = await fetch('/api/holdings');
-  const holdings = await res.json();
-  const tbody    = document.getElementById('holdingsBody');
+  const tbody = document.getElementById('holdingsBody');
+  try {
+    const holdings = await apiFetch('/api/holdings');
 
-  if (!holdings.length) {
-    tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted" style="padding:2rem">
-      No holdings yet. <a href="/holdings">Add your first holding.</a></td></tr>`;
-    return;
-  }
-
-  // Group by ticker (blank ticker = its own row keyed by id)
-  const groups = {};
-  for (const h of holdings) {
-    const key = h.ticker || `__no_ticker_${h.id}`;
-    if (!groups[key]) {
-      groups[key] = { ticker: h.ticker, name: h.name, asset_type: h.asset_type,
-                      category: h.category, shares: 0, cost_basis: 0, current_value: 0 };
+    if (!holdings.length) {
+      tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted" style="padding:2rem">
+        No holdings yet. <a href="/holdings">Add your first holding.</a></td></tr>`;
+      return;
     }
-    groups[key].shares        += h.shares;
-    groups[key].cost_basis    += h.cost_basis;
-    groups[key].current_value += h.current_value;
+
+    // Group by ticker (blank ticker = its own row keyed by id)
+    const groups = {};
+    for (const h of holdings) {
+      const key = h.ticker || `__no_ticker_${h.id}`;
+      if (!groups[key]) {
+        groups[key] = { ticker: h.ticker, name: h.name, asset_type: h.asset_type,
+                        category: h.category, shares: 0, cost_basis: 0, current_value: 0 };
+      }
+      groups[key].shares        += h.shares;
+      groups[key].cost_basis    += h.cost_basis;
+      groups[key].current_value += h.current_value;
+    }
+
+    // Pre-compute derived sort fields
+    holdingsGroups = Object.values(groups).map(g => ({
+      ...g,
+      gain:    g.current_value - g.cost_basis,
+      gainPct: g.cost_basis > 0 ? (g.current_value - g.cost_basis) / g.cost_basis * 100 : 0,
+      pps:     g.shares > 0 ? g.current_value / g.shares : 0,
+    }));
+
+    renderHoldingsTable();
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">Failed to load holdings: ${esc(err.message)}</td></tr>`;
+    console.error('loadHoldings failed:', err);
   }
-
-  // Pre-compute derived sort fields
-  holdingsGroups = Object.values(groups).map(g => ({
-    ...g,
-    gain:    g.current_value - g.cost_basis,
-    gainPct: g.cost_basis > 0 ? (g.current_value - g.cost_basis) / g.cost_basis * 100 : 0,
-    pps:     g.shares > 0 ? g.current_value / g.shares : 0,
-  }));
-
-  renderHoldingsTable();
 }
 
 function sortHoldings(col) {
@@ -425,8 +439,7 @@ async function refreshPrices() {
   status.className     = 'alert';
 
   try {
-    const res  = await fetch('/api/holdings/refresh-prices', { method: 'POST' });
-    const data = await res.json();
+    const data = await apiFetch('/api/holdings/refresh-prices', { method: 'POST' });
 
     const parts = [];
     if (data.updated.length) parts.push(`Updated ${data.updated.length} holding(s).`);

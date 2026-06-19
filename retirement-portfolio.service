@@ -1,0 +1,15 @@
+[Unit]
+Description=Retirement Portfolio Flask App
+After=network.target
+
+[Service]
+Type=simple
+User=bill
+WorkingDirectory=/home/bill/sandbox/retirement-portfolio
+Environment=PATH=/home/bill/sandbox/retirement-portfolio/venv/bin
+ExecStart=/home/bill/sandbox/retirement-portfolio/venv/bin/python app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

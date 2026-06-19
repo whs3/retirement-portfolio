@@ -21,6 +21,48 @@
         return _fetch(url, opts);
       };
     })();
+
+    // Robust helper for the app's JSON APIs.
+    // Always returns parsed data on success, throws Error with a readable message on failure.
+    // Handles rate limits, server errors, and HTML error pages gracefully.
+    window.apiFetch = async function (url, opts = {}) {
+      const res = await fetch(url, opts);
+
+      const contentType = res.headers.get('content-type') || '';
+      let payload = null;
+
+      try {
+        if (contentType.includes('application/json')) {
+          payload = await res.json();
+        } else {
+          const text = await res.text();
+          // Try to extract something useful from HTML error pages
+          const titleMatch = text.match(/<title>(.*?)<\/title>/i);
+          payload = titleMatch ? titleMatch[1] : text.slice(0, 300);
+        }
+      } catch (e) {
+        payload = null;
+      }
+
+      if (!res.ok) {
+        let message = `HTTP ${res.status}`;
+        if (payload && typeof payload === 'object' && payload !== null) {
+          message = payload.error || payload.message || payload.msg || message;
+        } else if (typeof payload === 'string' && payload) {
+          message = payload;
+        }
+        const err = new Error(message);
+        err.status = res.status;
+        throw err;
+      }
+
+      // Successful response should be an object
+      if (payload && typeof payload === 'object') {
+        return payload;
+      }
+      // Fallback if somehow not object
+      return {};
+    };
   </script>
 </head>
 <body>
@@ -34,6 +76,7 @@
     <li><a href="/lookup"    {% if request.endpoint == 'lookup_page'     %}class="active"{% endif %}>Price Lookup</a></li>
     <li><a href="/overlap"   {% if request.endpoint == 'overlap_page'    %}class="active"{% endif %}>Overlap</a></li>
     <li><a href="/rebalance" {% if request.endpoint == 'rebalance_page'  %}class="active"{% endif %}>Rebalance</a></li>
+    <li><a href="/insights"  {% if request.endpoint == 'insights_page'   %}class="active"{% endif %}>Insights</a></li>
     <li><a href="/audit"     {% if request.endpoint == 'audit_page'      %}class="active"{% endif %}>Audit Log</a></li>
     <li><a href="/api/export/csv" class="btn-nav-export">Export CSV</a></li>
   </ul>

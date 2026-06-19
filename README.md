@@ -18,7 +18,7 @@ A self-hosted web app for tracking retirement investment holdings. Built with Fl
 Python 3.x is required. SQLite is built into Python — no database setup needed.
 
 ```bash
-git clone https://gitlab.com/whs3/retirement-portfolio.git
+git clone https://github.com/whs3/retirement-portfolio.git
 cd retirement-portfolio
 pip install -r requirements.txt
 python app.py

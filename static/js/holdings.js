@@ -148,6 +148,7 @@ function renderTable() {
       <td>${esc(h.account_type) || '—'}</td>
       <td class="col-actions">
         <button class="btn btn-sm btn-secondary" onclick="openModal(${h.id})">Edit</button>
+        ${h.ticker && h.ticker !== '$$CASH' ? `<button class="btn btn-sm btn-warning" onclick="sellAll(${h.id})">Sell All</button>` : ''}
         <button class="btn btn-sm btn-danger"    onclick="deleteHolding(${h.id}, '${esc(h.name)}')">Delete</button>
       </td>
     </tr>`;
@@ -238,6 +239,41 @@ async function submitForm(event) {
     loadHoldings();
   } else {
     alert(result.error ?? 'Failed to save holding.');
+  }
+}
+
+async function sellAll(id) {
+  const h = holdings.find(x => x.id === id);
+  if (!h || !h.ticker) return;
+
+  const matches = holdings.filter(x =>
+    x.ticker === h.ticker && x.owner === h.owner && x.account_type === h.account_type);
+  const totalShares = matches.reduce((sum, x) => sum + x.shares, 0);
+  const totalValue  = matches.reduce((sum, x) => sum + x.current_value, 0);
+
+  if (Math.abs(totalShares) < 1e-9 && Math.abs(totalValue) < 0.005) {
+    alert(`${h.ticker} is already fully sold for ${h.owner || 'Unassigned'} / ${h.account_type || 'Unassigned'}.`);
+    return;
+  }
+
+  const sharesStr = parseFloat(totalShares.toFixed(6));
+  const label = `${h.owner || 'Unassigned'} / ${h.account_type || 'Unassigned'}`;
+  if (!confirm(
+    `Sell all ${sharesStr} shares of ${h.ticker} (${label})?\n\n` +
+    `This adds an offsetting entry that zeroes out the current value (${fmt(totalValue)}).`
+  )) return;
+
+  const res = await fetch('/api/holdings/sell-all', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ ticker: h.ticker, owner: h.owner, account_type: h.account_type }),
+  });
+  const result = await res.json();
+
+  if (res.ok) {
+    loadHoldings();
+  } else {
+    alert(result.error ?? 'Failed to sell holding.');
   }
 }
 

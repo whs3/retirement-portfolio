@@ -107,6 +107,10 @@ def inject_server_timezone():
 
 _VALID_TICKER = re.compile(r"^[\w.\-\^]{1,20}$")
 
+# Below this magnitude, a summed dollar value is treated as fully sold /
+# rounding dust rather than a real position (dashboard breakdowns hide it).
+_NEGLIGIBLE_VALUE = 0.005
+
 # Category cache: avoids re-fetching on every performance page load within a server session
 _category_cache: dict[str, str] = {}
 
@@ -542,6 +546,78 @@ def delete_holding(hid):
     return jsonify({"success": True})
 
 
+@app.route("/api/holdings/sell-all", methods=["POST"])
+def sell_all_holding():
+    """Zero out a position by inserting one offsetting entry equal to the exact
+    negation of the summed shares/cost_basis/current_value currently on file for
+    the given ticker+owner+account_type. Because x + (-x) == 0 exactly in
+    floating point, this guarantees the position nets to $0.00 even when prior
+    manual sell entries left a stray penny of rounding drift."""
+    data   = request.get_json() or {}
+    ticker = (data.get("ticker") or "").strip().upper()
+    owner  = (data.get("owner") or "").strip()
+    account_type = (data.get("account_type") or "").strip()
+
+    if not ticker:
+        return jsonify({"error": "Ticker is required"}), 400
+    if not _VALID_TICKER.match(ticker):
+        return jsonify({"error": "Invalid ticker format"}), 400
+
+    db   = get_db()
+    rows = db.execute(
+        "SELECT * FROM holdings WHERE ticker=? AND owner=? AND account_type=?",
+        (ticker, owner, account_type),
+    ).fetchall()
+    if not rows:
+        return jsonify({"error": "No matching holding found"}), 404
+
+    total_shares       = sum(r["shares"] for r in rows)
+    total_cost_basis   = sum(r["cost_basis"] for r in rows)
+    total_current_value = sum(r["current_value"] for r in rows)
+
+    if abs(total_shares) < 1e-9 and abs(total_current_value) < 0.005:
+        return jsonify({"error": f"{ticker} is already fully sold"}), 400
+
+    ref  = rows[0]
+    now  = datetime.utcnow().isoformat()
+    cur  = db.execute(
+        """INSERT INTO holdings
+               (name, ticker, asset_type, category, owner, account_type, shares,
+                cost_basis, current_value, purchase_date, notes, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            ref["name"],
+            ticker,
+            ref["asset_type"],
+            ref["category"],
+            owner,
+            account_type,
+            -total_shares,
+            -total_cost_basis,
+            -total_current_value,
+            datetime.utcnow().strftime("%Y-%m-%d"),
+            "Sell all shares",
+            now,
+            now,
+        ),
+    )
+    db.commit()
+    audit(
+        "SELL_ALL",
+        ticker,
+        ref["name"],
+        shares=-total_shares,
+        current_value=-total_current_value,
+        cost_basis=-total_cost_basis,
+    )
+    return jsonify({
+        "id": cur.lastrowid,
+        "success": True,
+        "shares_sold": total_shares,
+        "value_sold": total_current_value,
+    }), 201
+
+
 # ── API: Portfolio summary ────────────────────────────────────────────────────
 
 
@@ -565,6 +641,7 @@ def portfolio_summary():
             "percentage": (v / total_value * 100) if total_value else 0,
         }
         for t, v in sorted(by_type.items())
+        if abs(v) >= _NEGLIGIBLE_VALUE
     ]
 
     by_category: dict[str, float] = {}
@@ -585,6 +662,7 @@ def portfolio_summary():
             "positions": len(by_category_tickers.get(cat, set())),
         }
         for cat, val in sorted(by_category.items())
+        if abs(val) >= _NEGLIGIBLE_VALUE
     ]
 
     by_owner: dict[str, float] = {}
@@ -600,10 +678,12 @@ def portfolio_summary():
     owner_allocation = [
         {"owner": o, "value": v, "percentage": (v / total_value * 100) if total_value else 0}
         for o, v in sorted(by_owner.items())
+        if abs(v) >= _NEGLIGIBLE_VALUE
     ]
     account_type_allocation = [
         {"account_type": a, "value": v, "percentage": (v / total_value * 100) if total_value else 0}
         for a, v in sorted(by_account_type.items())
+        if abs(v) >= _NEGLIGIBLE_VALUE
     ]
 
     return jsonify(

@@ -107,9 +107,9 @@ def inject_server_timezone():
 
 _VALID_TICKER = re.compile(r"^[\w.\-\^]{1,20}$")
 
-# Below this magnitude, a summed dollar value is treated as fully sold /
+# At or below this magnitude, a summed dollar value is treated as fully sold /
 # rounding dust rather than a real position (dashboard breakdowns hide it).
-_NEGLIGIBLE_VALUE = 0.005
+_NEGLIGIBLE_VALUE = 0.01
 
 # Category cache: avoids re-fetching on every performance page load within a server session
 _category_cache: dict[str, str] = {}
@@ -641,7 +641,7 @@ def portfolio_summary():
             "percentage": (v / total_value * 100) if total_value else 0,
         }
         for t, v in sorted(by_type.items())
-        if abs(v) >= _NEGLIGIBLE_VALUE
+        if abs(v) > _NEGLIGIBLE_VALUE
     ]
 
     by_category: dict[str, float] = {}
@@ -662,7 +662,7 @@ def portfolio_summary():
             "positions": len(by_category_tickers.get(cat, set())),
         }
         for cat, val in sorted(by_category.items())
-        if abs(val) >= _NEGLIGIBLE_VALUE
+        if abs(val) > _NEGLIGIBLE_VALUE
     ]
 
     by_owner: dict[str, float] = {}
@@ -678,12 +678,12 @@ def portfolio_summary():
     owner_allocation = [
         {"owner": o, "value": v, "percentage": (v / total_value * 100) if total_value else 0}
         for o, v in sorted(by_owner.items())
-        if abs(v) >= _NEGLIGIBLE_VALUE
+        if abs(v) > _NEGLIGIBLE_VALUE
     ]
     account_type_allocation = [
         {"account_type": a, "value": v, "percentage": (v / total_value * 100) if total_value else 0}
         for a, v in sorted(by_account_type.items())
-        if abs(v) >= _NEGLIGIBLE_VALUE
+        if abs(v) > _NEGLIGIBLE_VALUE
     ]
 
     return jsonify(

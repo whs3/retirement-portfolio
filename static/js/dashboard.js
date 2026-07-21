@@ -393,7 +393,7 @@ function sortHoldings(col) {
 function renderHoldingsTable() {
   const tbody = document.getElementById('holdingsBody');
 
-  const sorted = [...holdingsGroups].filter(g => Math.abs(g.current_value) >= 0.005).sort((a, b) => {
+  const sorted = [...holdingsGroups].filter(g => Math.abs(g.current_value) > 0.01).sort((a, b) => {
     const av = a[sortCol] ?? '';
     const bv = b[sortCol] ?? '';
     if (typeof av === 'string') return av.localeCompare(bv) * sortDir;

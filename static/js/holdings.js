@@ -82,7 +82,8 @@ function renderTable() {
   });
 
   const summaryEl = document.getElementById('searchSummary');
-  if ((query || ownerFilter || accountFilter) && filtered.length) {
+  let summaryEntries = [];
+  if (filtered.length) {
     const byTicker = {};
     for (const h of filtered) {
       const t = h.ticker || '—';
@@ -90,10 +91,15 @@ function renderTable() {
       byTicker[t].shares        += h.shares;
       byTicker[t].current_value += h.current_value;
     }
-    const entries = Object.entries(byTicker).sort(([a], [b]) => a.localeCompare(b));
-    const totalShares = entries.reduce((sum, [, s]) => sum + s.shares, 0);
-    const totalValue  = entries.reduce((sum, [, s]) => sum + s.current_value, 0);
-    const summaryRows = entries.map(([ticker, s]) => {
+    summaryEntries = Object.entries(byTicker)
+      .filter(([, s]) => Math.abs(s.current_value) > 0.01)
+      .sort(([a], [b]) => a.localeCompare(b));
+  }
+
+  if (summaryEntries.length) {
+    const totalShares = summaryEntries.reduce((sum, [, s]) => sum + s.shares, 0);
+    const totalValue  = summaryEntries.reduce((sum, [, s]) => sum + s.current_value, 0);
+    const summaryRows = summaryEntries.map(([ticker, s]) => {
         const sharesStr = s.shares !== 0 ? parseFloat(s.shares.toFixed(6)).toString() : '—';
         return `<tr>
           <td style="padding:0.2rem 1.5rem 0.2rem 0"><strong>${esc(ticker)}</strong></td>
@@ -108,7 +114,7 @@ function renderTable() {
       <td style="padding:0.3rem 0;text-align:right"><strong>${fmt(totalValue)}</strong></td>
     </tr>`;
     summaryEl.innerHTML = `
-      <div style="font-size:0.8rem;color:var(--text-muted,#6c757d);margin-bottom:0.35rem;text-transform:uppercase;letter-spacing:0.05em">Search summary by ticker</div>
+      <div style="font-size:0.8rem;color:var(--text-muted,#6c757d);margin-bottom:0.35rem;text-transform:uppercase;letter-spacing:0.05em">Summary by ticker</div>
       <table style="border-collapse:collapse;font-size:0.9rem">
         <thead><tr>
           <th style="text-align:left;padding:0.2rem 1.5rem 0.2rem 0;border-bottom:1px solid var(--border,#dee2e6)">Ticker</th>

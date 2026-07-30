@@ -10,6 +10,8 @@ const CHART_COLORS = [
 let overlapChart = null;
 let allStocks    = [];
 
+const OVERLAP_CACHE_KEY = 'overlapData';
+
 function fmt(n) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 }
@@ -43,6 +45,7 @@ async function calculate() {
     status.style.display = 'none';
     allStocks = data.stocks;
     renderResults(data);
+    sessionStorage.setItem(OVERLAP_CACHE_KEY, JSON.stringify(data));
 
   } catch (err) {
     status.classList.add('alert-danger');
@@ -50,6 +53,22 @@ async function calculate() {
   } finally {
     btn.disabled    = false;
     btn.textContent = 'Recalculate';
+  }
+}
+
+function calculateOnLoad() {
+  const cached = sessionStorage.getItem(OVERLAP_CACHE_KEY);
+  if (!cached) {
+    calculate();
+    return;
+  }
+  try {
+    const data = JSON.parse(cached);
+    allStocks = data.stocks;
+    renderResults(data);
+    document.getElementById('calcBtn').textContent = 'Recalculate';
+  } catch {
+    calculate();
   }
 }
 
@@ -244,4 +263,5 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('overlapSearch').addEventListener('input', e => {
     renderTable(e.target.value);
   });
+  calculateOnLoad();
 });

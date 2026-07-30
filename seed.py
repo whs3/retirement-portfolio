@@ -9,6 +9,8 @@ Usage:
 import datetime
 import sqlite3
 
+from portfolio.db import init_db
+
 DB_PATH = "portfolio.db"
 
 HOLDINGS = [
@@ -57,47 +59,12 @@ TARGET_ALLOCATIONS = [
 
 
 def seed():
+    # Shared schema + migrations (same path as the Flask app)
+    init_db(DB_PATH)
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     now = datetime.datetime.now(datetime.UTC).isoformat()
-
-    # Ensure tables exist (mirrors init_db in app.py)
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS holdings (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            name          TEXT    NOT NULL,
-            ticker        TEXT    NOT NULL DEFAULT '',
-            asset_type    TEXT    NOT NULL,
-            category      TEXT    NOT NULL DEFAULT '',
-            shares        REAL    NOT NULL DEFAULT 0,
-            cost_basis    REAL    NOT NULL DEFAULT 0,
-            current_value REAL    NOT NULL DEFAULT 0,
-            purchase_date TEXT    NOT NULL DEFAULT '',
-            notes         TEXT    NOT NULL DEFAULT '',
-            created_at    TEXT    NOT NULL,
-            updated_at    TEXT    NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS target_allocations (
-            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-            category           TEXT    NOT NULL UNIQUE,
-            target_percentage  REAL    NOT NULL DEFAULT 0
-        );
-
-        CREATE TABLE IF NOT EXISTS settings (
-            key   TEXT PRIMARY KEY,
-            value TEXT NOT NULL DEFAULT ''
-        );
-    """)
-
-    # Migrate older databases created by previous versions of this script/app.
-    holding_cols = [row[1] for row in conn.execute("PRAGMA table_info(holdings)")]
-    if "category" not in holding_cols:
-        conn.execute("ALTER TABLE holdings ADD COLUMN category TEXT NOT NULL DEFAULT ''")
-
-    allocation_cols = [row[1] for row in conn.execute("PRAGMA table_info(target_allocations)")]
-    if "asset_type" in allocation_cols and "category" not in allocation_cols:
-        conn.execute("ALTER TABLE target_allocations RENAME COLUMN asset_type TO category")
 
     inserted = 0
     for name, ticker, asset_type, category, shares, cost_basis, current_value, purchase_date in HOLDINGS:

@@ -29,21 +29,34 @@ flask --app app run --debug
 # The app is then available at http://localhost:5000
 ```
 
-There is no test suite or linter configured yet.
+```bash
+# Run the test suite (isolated temp DB; no network)
+pip install -r requirements-dev.txt
+pytest
+# or with coverage:
+pytest --cov=portfolio --cov-report=term-missing
+```
 
-`portfolio_audit.log` is written to the project root at runtime — add it to `.gitignore` alongside `portfolio.db`.
+`portfolio_audit.log` is written to the project root at runtime — it is gitignored alongside `portfolio.db`.
 
 ## Architecture
 
-Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build step.
+Package-based Flask backend with a plain HTML/JS frontend. No build step.
 
-**Backend** (`app.py`)
-- All Flask routes, DB helpers, and business logic live in one file.
-- SQLite database (`portfolio.db`) is created automatically via `init_db()` at module import time.
-- `get_db()` / `close_db()` use Flask's `g` object for per-request connection caching.
-- Two tables: `holdings` and `target_allocations`.
-- `TEMPLATES_AUTO_RELOAD = True` — template changes are picked up without restarting the server (Python code changes still require a restart).
-- `holdings` table includes `owner` (e.g. Akiko, Bill, Joint) and `account_type` (e.g. IRA, 401k, Roth IRA, Broker) columns added via migration in `init_db()`.
+**Entry point** (`app.py`)
+- Thin wrapper: `app = create_app()` so `python app.py` and `flask --app app run` keep working.
+
+**Package** (`portfolio/`)
+- `create_app()` in `portfolio/__init__.py` wires config, extensions, DB, security hooks, and blueprints.
+- `portfolio/db.py` — `get_db()` / `close_db()` / `init_db()` (SQLite via Flask `g`).
+- `portfolio/routes/` — page and JSON API blueprints (one module per area).
+- `portfolio/services/` — business logic and external data (yfinance, ETF providers, performance, insights).
+- `portfolio/validators.py` — ticker regex and numeric parsing.
+- `portfolio/security.py` — LAN allowlist + security headers.
+- SQLite database (`portfolio.db`) is created automatically via `init_db()` inside `create_app()`.
+- Tables: `holdings`, `target_allocations`, `settings`.
+- `holdings` includes `owner` and `account_type` columns via migration in `init_db()`.
+- `TEMPLATES_AUTO_RELOAD = True` — template changes are picked up without restarting (Python changes still need a restart).
 
 **Security**
 - `local_network_only()` before_request hook — rejects any request not from 127.0.0.1, ::1, or 192.168.x.x.
@@ -103,12 +116,11 @@ Single-file Flask backend (`app.py`) with a plain HTML/JS frontend. No build ste
 
 **Performance cash-ticker handling**: `get_performance()` does a first pass to identify `cash_tickers` — any ticker that has at least one `asset_type="cash"` entry in the DB (e.g. SPAXX). All entries for those tickers are routed to `constant_value` regardless of the individual row's asset_type. This prevents money-market funds from appearing in `shares_by_ticker` with negative share counts and no yfinance price history, which would otherwise cause an artificial portfolio drop on the one day a price becomes available.
 
-**Key backend helpers**
-- `_detect_iana_timezone()` — detects the server's IANA timezone (e.g. `America/New_York`) from `/etc/timezone`, `/etc/localtime` symlink, or `TZ` env var; result is cached in `_SERVER_TIMEZONE` and injected into all templates via a context processor so frontend timestamps display in the server's local timezone.
-- `_get_ticker_category(ticker, asset_type)` — returns Morningstar category (ETF/fund) or sector (stock); results cached in `_category_cache` for the server session to avoid repeat API calls.
-- `_extract_fund_index(description)` — uses regex to extract the tracked index name from a fund's description text; maps common index names to yfinance tickers via `_INDEX_TICKER_MAP`.
-- `_parse_positive_float(value, field_name)` — validates numeric input at API boundaries; rejects negatives.
-- `_parse_float(value, field_name)` — like `_parse_positive_float` but allows negatives; used for holdings fields to support sell transactions.
+**Key backend helpers** (under `portfolio/`)
+- `timezone_util.detect_iana_timezone()` / `SERVER_TIMEZONE` — IANA timezone from `/etc/timezone`, `/etc/localtime`, or `TZ`; injected into templates via a context processor.
+- `services.categories.get_ticker_category()` — Morningstar category (ETF/fund) or sector (stock); session-cached.
+- `services.fund_index.extract_fund_index()` — regex extraction of tracked index from fund description.
+- `validators.parse_positive_float()` / `parse_float()` — numeric input at API boundaries (`parse_float` allows negatives for sells).
 
 **Lookup page details**
 - Market Indices section auto-loads S&P 500 (`^GSPC`) and NASDAQ (`^IXIC`) on page open; normalized % change chart with 1M/3M/6M/YTD/12M period buttons.

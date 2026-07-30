@@ -93,7 +93,7 @@ function renderTable() {
     }
     summaryEntries = Object.entries(byTicker)
       .filter(([, s]) => Math.abs(s.current_value) > 0.01)
-      .sort(([a], [b]) => a.localeCompare(b));
+      .sort(([, a], [, b]) => b.current_value - a.current_value);
   }
 
   if (summaryEntries.length) {

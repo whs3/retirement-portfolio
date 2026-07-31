@@ -4,11 +4,24 @@ import sqlite3
 
 from flask import current_app, g
 
+# Applied on every connection for durability and referential integrity.
+_CONNECTION_PRAGMAS = (
+    "PRAGMA journal_mode=WAL",
+    "PRAGMA foreign_keys=ON",
+    "PRAGMA busy_timeout=5000",
+)
+
+
+def _apply_connection_pragmas(conn: sqlite3.Connection) -> None:
+    for pragma in _CONNECTION_PRAGMAS:
+        conn.execute(pragma)
+
 
 def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(current_app.config["DATABASE"])
         g.db.row_factory = sqlite3.Row
+        _apply_connection_pragmas(g.db)
     return g.db
 
 
@@ -28,6 +41,7 @@ def init_db(database_path: str | None = None):
         database_path = current_app.config["DATABASE"]
 
     conn = sqlite3.connect(database_path)
+    _apply_connection_pragmas(conn)
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS holdings (

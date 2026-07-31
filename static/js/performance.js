@@ -461,17 +461,32 @@ function renderHoldingsChart(dates, holdingsSeries) {
     if (!seenMonths.has(ym)) { seenMonths.add(ym); monthStarts.add(d); }
   }
 
-  // Sort by end-of-period % change (highest first) before assigning colors,
-  // so tooltip order and line colors are always in sync without relying on
-  // Chart.js itemSort (which corrupts datasetIndex references in labelColor).
-  const sortedSeries = [...holdingsSeries].sort((a, b) => {
+  // Drop closed/dust series (base ~0 charts as ±100% noise) and sort by
+  // end-of-period % change (highest first) before assigning colors so tooltip
+  // order and line colors stay in sync without Chart.js itemSort.
+  const NEGLIGIBLE = 0.01;
+  const chartable = holdingsSeries.filter(h => {
+    if (!h.values || !h.values.length) return false;
+    const base = h.values[0];
+    const last = h.values[h.values.length - 1];
+    // Need a real starting value to normalize % change; skip zeroed positions.
+    return Math.abs(base) > NEGLIGIBLE && Math.abs(last) > NEGLIGIBLE;
+  });
+
+  if (!chartable.length) {
+    card.style.display = 'none';
+    if (holdingsChart) { holdingsChart.destroy(); holdingsChart = null; }
+    return;
+  }
+
+  const sortedSeries = [...chartable].sort((a, b) => {
     const aPct = a.values[0] ? (a.values[a.values.length - 1] - a.values[0]) / a.values[0] : 0;
     const bPct = b.values[0] ? (b.values[b.values.length - 1] - b.values[0]) / b.values[0] : 0;
     return bPct - aPct;
   });
 
   const datasets = sortedSeries.map((h, i) => {
-    const base = h.values[0] || 1;
+    const base = h.values[0];
     return {
       label:            h.ticker,
       data:             h.values.map(v => +((v - base) / base * 100).toFixed(4)),

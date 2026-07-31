@@ -13,7 +13,7 @@ The backend is organized as a `portfolio` Python package with an app factory, bl
 | **Dashboard** | Total value, cost basis, gain/loss; allocation by asset type, category, owner, and account type; holdings summary; one-click price refresh |
 | **Holdings** | Add, edit, delete positions (stocks, bonds, ETFs, mutual funds, cash); owner and account type; sell via negative amounts or **Sell all**; live Yahoo Finance prices; search/sort/filter |
 | **Performance** | Portfolio value over time (3M / 6M / YTD / 12M); stacked category breakdown; individual holdings % change; monthly gain/loss table |
-| **Price Lookup** | 12-month history for any ticker; S&P 500 and NASDAQ on open; analyst data for stocks; fund family, category, AUM, expense ratio, tracked index for funds |
+| **Price Lookup** | 12-month history for any ticker; market indices on open (S&P 500, NASDAQ, Russell 2000, short-term Treasuries); analyst data for stocks; fund family, category, AUM, expense ratio, tracked index for funds |
 | **Overlap** | Break ETFs/funds into underlying stocks and show concentration across the whole portfolio |
 | **Rebalance** | Category target allocations with Buy / Sell / Hold recommendations |
 | **Insights** | Analyst consensus, sentiment mix, expense/valuation signals, and high-level recommendations |
@@ -66,13 +66,16 @@ Safe to re-run: existing holdings (matched by name + asset type) are skipped, an
 
 ## Configuration
 
-Settings can be provided via environment variables:
+Settings come from the environment (and an optional `.env` file in the project root). Relative paths resolve against the **project root**, not the shell’s current directory. Copy `.env.example` to `.env` if you prefer a file.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `SECRET_KEY` | random per process | Flask/CSRF secret. **Set a fixed value in production** so restarts do not invalidate open sessions |
-| `PORTFOLIO_DATABASE` | `portfolio.db` | SQLite database path (relative to working directory unless absolute) |
+| `SECRET_KEY` | auto-managed | Flask/CSRF secret. If unset, the app creates/reuses a project-local `.secret_key` file so restarts keep sessions valid. Prefer setting this explicitly in production/systemd |
+| `SECRET_KEY_FILE` | `.secret_key` | Path used when `SECRET_KEY` is not set |
+| `PORTFOLIO_DATABASE` | `portfolio.db` | SQLite database path |
 | `PORTFOLIO_AUDIT_LOG` | `portfolio_audit.log` | Append-only audit log path |
+| `PORTFOLIO_BACKUP_DIR` | `backups` | Default directory for `backup_db.py` |
+| `PORTFOLIO_BACKUP_KEEP` | `14` | How many timestamped backups to retain |
 | `FLASK_ENV` | (unset) | Set to `development` to enable debug mode when using `python app.py` |
 | `TZ` | system | IANA timezone used for display timestamps (e.g. `America/New_York`) |
 
@@ -84,6 +87,23 @@ export PORTFOLIO_DATABASE=/var/lib/retirement-portfolio/portfolio.db
 python app.py
 ```
 
+SQLite opens with **WAL** journaling, **foreign_keys=ON**, and a busy timeout so concurrent reads/backups are safer.
+
+### Database backups
+
+```bash
+python backup_db.py                          # → backups/portfolio-YYYYMMDDTHHMMSSZ.db
+python backup_db.py --keep 30                # retain 30 newest copies
+python backup_db.py --db /path/to/db --dir /var/backups/portfolio
+```
+
+Backups use the SQLite backup API (safe while the app is running). A daily user crontab entry (02:15) is recommended:
+
+```cron
+15 2 * * * cd /home/bill/sandbox/retirement-portfolio && /home/bill/sandbox/retirement-portfolio/venv/bin/python backup_db.py >> /home/bill/sandbox/retirement-portfolio/backups/backup.log 2>&1
+```
+
+Install or replace with: `crontab -e` (output is appended to `backups/backup.log`).
 ### Optional: Financial Modeling Prep API key
 
 By default, ETF holdings come from issuer APIs (Vanguard, State Street, Invesco) when known, otherwise Yahoo Finance top holdings. For broader full-holdings coverage, store a [Financial Modeling Prep](https://financialmodelingprep.com/) API key in the app **Settings** (stored in SQLite; never returned in plain text by the API).
@@ -128,12 +148,14 @@ portfolio/                  # Application package
   routes/                   # Flask blueprints (HTTP pages + JSON APIs)
   services/                 # Business logic & external data
 seed.py                     # Sample holdings and target allocations
+backup_db.py                # WAL-safe SQLite backup helper
 tests/                      # pytest suite
 templates/                  # Jinja2 pages (base + one per feature)
 static/css/                 # Stylesheet
 static/js/                  # Per-page frontend (fetch + Chart.js)
-requirements.txt            # Runtime dependencies
+requirements.txt            # Pinned runtime dependencies
 requirements-dev.txt        # pytest, coverage, …
+.env.example                # Sample environment variables
 retirement-portfolio.service  # Example systemd unit
 .github/workflows/ci.yml
 ```
@@ -204,10 +226,12 @@ After=network.target
 [Service]
 Type=simple
 User=bill
-WorkingDirectory=/home/bill/sandbox/grok/retirement-portfolio
-Environment=PATH=/home/bill/sandbox/grok/retirement-portfolio/.venv/bin
-Environment=SECRET_KEY=replace-with-a-long-random-secret
-ExecStart=/home/bill/sandbox/grok/retirement-portfolio/.venv/bin/python app.py
+WorkingDirectory=/home/bill/sandbox/retirement-portfolio
+Environment=PATH=/home/bill/sandbox/retirement-portfolio/venv/bin
+# Loads SECRET_KEY and path overrides from a gitignored .env (mode 600).
+# Create from .env.example, or let the app create .secret_key if unset.
+EnvironmentFile=-/home/bill/sandbox/retirement-portfolio/.env
+ExecStart=/home/bill/sandbox/retirement-portfolio/venv/bin/python app.py
 Restart=on-failure
 RestartSec=5
 
@@ -225,9 +249,9 @@ sudo systemctl status retirement-portfolio.service
 
 Notes:
 
-- `WorkingDirectory` controls where `portfolio.db` and `portfolio_audit.log` are created (unless absolute paths are set via env).
+- Relative DB/log paths resolve from the project root (same as `WorkingDirectory` in the sample unit).
 - The stock unit runs the Flask development server. For heavier use, consider gunicorn/waitress behind a reverse proxy.
-- Always set a stable `SECRET_KEY` under systemd so CSRF tokens survive restarts.
+- Prefer a fixed `SECRET_KEY` (unit env or `.env`). If omitted, the app persists one in `.secret_key` so CSRF tokens survive restarts.
 
 ---
 
@@ -237,10 +261,13 @@ Created automatically; gitignored:
 
 | File | Description |
 |------|-------------|
-| `portfolio.db` | SQLite database (holdings, target allocations, settings) |
+| `portfolio.db` | SQLite database (holdings, target allocations, settings); may also create `-wal` / `-shm` sidecars in WAL mode |
 | `portfolio_audit.log` | Append-only audit trail of mutations |
+| `.secret_key` | Auto-generated Flask secret when `SECRET_KEY` is not set |
+| `.env` | Optional local env overrides (see `.env.example`) |
+| `backups/` | Timestamped DB copies from `python backup_db.py` |
 
-Back up `portfolio.db` regularly if you rely on this for real balances.
+Run `python backup_db.py` (or cron) regularly if you rely on this for real balances.
 
 ---
 

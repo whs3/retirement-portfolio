@@ -37,7 +37,12 @@ pytest
 pytest --cov=portfolio --cov-report=term-missing
 ```
 
-`portfolio_audit.log` is written to the project root at runtime — it is gitignored alongside `portfolio.db`.
+```bash
+# Online-safe SQLite backup (timestamped under backups/)
+python backup_db.py
+```
+
+Runtime files written to the project root and gitignored: `portfolio.db` (+ WAL sidecars), `portfolio_audit.log`, `.secret_key` (if `SECRET_KEY` unset), optional `.env`, and `backups/`.
 
 ## Architecture
 
@@ -48,7 +53,8 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 
 **Package** (`portfolio/`)
 - `create_app()` in `portfolio/__init__.py` wires config, extensions, DB, security hooks, and blueprints.
-- `portfolio/db.py` — `get_db()` / `close_db()` / `init_db()` (SQLite via Flask `g`).
+- `portfolio/config.py` — env / optional `.env`, stable `SECRET_KEY` (env or `.secret_key` file), path resolution from project root.
+- `portfolio/db.py` — `get_db()` / `close_db()` / `init_db()` (SQLite via Flask `g`; WAL + foreign_keys on connect).
 - `portfolio/routes/` — page and JSON API blueprints (one module per area).
 - `portfolio/services/` — business logic and external data (yfinance, ETF providers, performance, insights).
 - `portfolio/validators.py` — ticker regex and numeric parsing.
@@ -56,6 +62,7 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 - SQLite database (`portfolio.db`) is created automatically via `init_db()` inside `create_app()`.
 - Tables: `holdings`, `target_allocations`, `settings`.
 - `holdings` includes `owner` and `account_type` columns via migration in `init_db()`.
+- `backup_db.py` — WAL-safe timestamped backups under `backups/`.
 - `TEMPLATES_AUTO_RELOAD = True` — template changes are picked up without restarting (Python changes still need a restart).
 
 **Security**
@@ -102,7 +109,7 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 | Holdings | `holdings.html` | `holdings.js` | CRUD table for all holdings; Owner and Account Type filter dropdowns; search summary shows totals row; inline price refresh; supports sell transactions via negative shares/cost_basis/current_value; Ticker Symbol is first field with auto-focus and auto-fetch on input (600 ms debounce); shares support up to 6 decimal places; second item in nav bar |
 | Rebalance | `rebalance.html` | `rebalance.js` | Buy/Sell/Hold recommendations vs target allocations; zero-target categories filtered from chart and table |
 | Audit | `audit.html` | `audit.js` | Audit log with search/filter |
-| Lookup | `lookup.html` | `lookup.js` | Price history chart for any ticker; auto-loads ^GSPC + ^IXIC on open; analyst recommendations for stocks; fund info + tracked index for ETFs/funds; 1M/3M/6M/YTD/12M period selector on both charts |
+| Lookup | `lookup.html` | `lookup.js` | Price history chart for any ticker; auto-loads ^GSPC, ^IXIC, ^RUT (mid/small), SHY (short Treasuries) on open; analyst recommendations for stocks; fund info + tracked index for ETFs/funds; 1M/3M/6M/YTD/12M period selector on both charts |
 | Overlap | `overlap.html` | `overlap.js` | ETF holdings overlap — doughnut chart + full table |
 | Performance | `performance.html` | `performance.js` | Portfolio value over time with 3M/6M/YTD/12M period selector; stacked category breakdown chart; individual holdings % change chart; monthly gain/loss table |
 
@@ -123,7 +130,7 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 - `validators.parse_positive_float()` / `parse_float()` — numeric input at API boundaries (`parse_float` allows negatives for sells).
 
 **Lookup page details**
-- Market Indices section auto-loads S&P 500 (`^GSPC`) and NASDAQ (`^IXIC`) on page open; normalized % change chart with 1M/3M/6M/YTD/12M period buttons.
+- Market Indices section auto-loads S&P 500 (`^GSPC`), NASDAQ (`^IXIC`), Russell 2000 mid/small (`^RUT`), and short-term Treasuries (`SHY`) on page open; normalized % change chart with 1M/3M/6M/YTD/12M period buttons.
 - Ticker lookup supports portfolio dropdown or free-text entry; uses `_lookupSeq` counter to discard stale async responses.
 - Analyst section (stocks only): consensus badge, 1–5 scale marker, price targets, summary narrative, recent analyst actions table.
 - Fund Information section (ETFs/mutual funds): fund family, category, AUM, net expense ratio, YTD return (calculated from price history, not the stale yfinance field), 3-year and 5-year avg returns, tracked index name and index YTD/1-year returns (where mappable), fund description.

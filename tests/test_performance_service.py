@@ -139,3 +139,56 @@ def test_performance_zero_net_shares_dropped(app_ctx):
         mock_dl.assert_not_called()
 
     assert result["dates"] == []
+
+
+def test_performance_share_dust_with_zero_value_excluded(app_ctx):
+    """Sell residual share dust (e.g. BIL ~-5e-5 shares, $0 value) must not chart.
+
+    The old 1e-9 share threshold let these through; tiny values then rounded and
+    normalized to a bogus -100% line on the individual-holdings chart.
+    """
+    db = get_db()
+    # Real open position
+    db.execute(
+        """INSERT INTO holdings
+           (name, ticker, asset_type, category, owner, account_type, shares,
+            cost_basis, current_value, purchase_date, notes, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "Apple", "AAPL", "stock", "Technology", "Bill", "IRA",
+            10, 1000, 1500, "2024-01-01", "", "2024-01-01", "2024-01-01",
+        ),
+    )
+    # Closed BIL-like position: share residual above 1e-9, net value ~0
+    for shares, cost, val in (
+        (3483.962534, 318956.78, 319305.17),
+        (-3483.962582, -318956.78, -319305.17),  # leaves ~-4.8e-5 shares, $0
+    ):
+        db.execute(
+            """INSERT INTO holdings
+               (name, ticker, asset_type, category, owner, account_type, shares,
+                cost_basis, current_value, purchase_date, notes, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                "BIL ETF", "BIL", "etf", "Ultrashort Bond", "Bill", "401k",
+                shares, cost, val, "2024-01-01", "", "2024-01-01", "2024-01-01",
+            ),
+        )
+    db.commit()
+
+    frame = _make_price_frame(["AAPL", "BIL"], days=50, start_price=100.0)
+
+    with (
+        patch("portfolio.services.performance.yf.download", return_value=frame) as mock_dl,
+        patch(
+            "portfolio.services.performance.get_ticker_category",
+            return_value="Technology",
+        ),
+    ):
+        result = build_performance()
+
+    assert mock_dl.called
+    requested = set(mock_dl.call_args.args[0])
+    assert requested == {"AAPL"}
+    tickers = [h["ticker"] for h in result["holdings_series"]]
+    assert tickers == ["AAPL"]

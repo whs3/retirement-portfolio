@@ -1,6 +1,15 @@
 portfolio.db
+portfolio.db-wal
+portfolio.db-shm
+portfolio.db-journal
 portfolio_audit.log
+.secret_key
+.env
+backups/
 __pycache__/
 *.pyc
+.pytest_cache/
 .venv/
 venv/
+.coverage
+htmlcov/

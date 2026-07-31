@@ -7,6 +7,8 @@ Type=simple
 User=bill
 WorkingDirectory=/home/bill/sandbox/retirement-portfolio
 Environment=PATH=/home/bill/sandbox/retirement-portfolio/venv/bin
+# Explicit env (SECRET_KEY, DB paths, etc.). File is gitignored; mode 600.
+EnvironmentFile=-/home/bill/sandbox/retirement-portfolio/.env
 ExecStart=/home/bill/sandbox/retirement-portfolio/venv/bin/python app.py
 Restart=on-failure
 RestartSec=5

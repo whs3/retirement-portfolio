@@ -9,6 +9,7 @@ import yfinance as yf
 
 from portfolio.db import get_db
 from portfolio.services.categories import ASSET_TYPE_FALLBACK, get_ticker_category
+from portfolio.validators import NEGLIGIBLE_VALUE
 
 
 def build_performance() -> dict:
@@ -49,8 +50,15 @@ def build_performance() -> dict:
             continue
         shares_by_ticker[ticker] = shares_by_ticker.get(ticker, 0.0) + h["shares"]
 
-    # Drop tickers whose net shares are zero (or floating-point dust)
-    shares_by_ticker = {t: s for t, s in shares_by_ticker.items() if abs(s) >= 1e-9}
+    # Drop closed / rounding-dust positions. Share residuals after sell-all can be
+    # larger than float eps (e.g. BIL left with ~-5e-5 shares and ~$0 value) and
+    # would otherwise appear as a phantom series that charts as -100%.
+    shares_by_ticker = {
+        t: s
+        for t, s in shares_by_ticker.items()
+        if abs(s) >= 1e-9
+        and abs(current_value_by_ticker.get(t, 0.0)) > NEGLIGIBLE_VALUE
+    }
 
     end_dt = datetime.now()
     start_dt = end_dt - timedelta(days=375)  # a little extra so we can trim to 365
@@ -124,6 +132,10 @@ def build_performance() -> dict:
             continue
         series = (close[ticker].ffill() * shares).reindex(portfolio.index).ffill().fillna(0)
         h_values = [round(float(v), 2) for v in series.values]
+        # Skip series that never rise above dust (defensive; value filter above
+        # should already exclude these).
+        if not h_values or max(abs(v) for v in h_values) <= NEGLIGIBLE_VALUE:
+            continue
         holdings_series.append({
             "ticker": ticker,
             "name": ticker_names.get(ticker, ticker),

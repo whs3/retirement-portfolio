@@ -7,11 +7,14 @@ Usage:
 """
 
 import datetime
+import os
 import sqlite3
 
+from portfolio.config import load_dotenv, resolve_path
 from portfolio.db import init_db
 
-DB_PATH = "portfolio.db"
+load_dotenv()
+DB_PATH = resolve_path(os.getenv("PORTFOLIO_DATABASE", "portfolio.db"))
 
 HOLDINGS = [
     # (name, ticker, asset_type, category, shares, cost_basis, current_value, purchase_date)

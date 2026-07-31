@@ -10,8 +10,12 @@ const _CHANGE_LABELS  = { 1: '1-Month Change', 3: '3-Month Change', 6: '6-Month 
 // ── Market Indices (auto-loaded on page open) ─────────────────────────────────
 
 const INDEX_SYMBOLS = [
-  { symbol: '^GSPC', label: 'S&P 500',  color: '#2563eb' },
-  { symbol: '^IXIC', label: 'NASDAQ',   color: '#d97706' },
+  { symbol: '^GSPC', label: 'S&P 500',                 color: '#2563eb' },
+  { symbol: '^IXIC', label: 'NASDAQ',                  color: '#d97706' },
+  // Russell 2000: standard mid/small-cap equity benchmark (complements large-cap S&P 500)
+  { symbol: '^RUT',  label: 'Russell 2000 (Mid/Small)', color: '#16a34a' },
+  // iShares 1–3 Year Treasury Bond ETF — liquid proxy for short-term gov bonds
+  { symbol: 'SHY',   label: 'Short-Term Treasuries',    color: '#7c3aed' },
 ];
 
 async function loadMarketIndices() {
@@ -23,22 +27,47 @@ async function loadMarketIndices() {
   statusEl.style.display = 'block';
 
   try {
-    const results = await Promise.all(
-      INDEX_SYMBOLS.map(s =>
-        fetch(`/api/lookup/${encodeURIComponent(s.symbol)}`).then(r => r.json())
-      )
+    const payloads = await Promise.all(
+      INDEX_SYMBOLS.map(async (s) => {
+        const r = await fetch(`/api/lookup/${encodeURIComponent(s.symbol)}`);
+        const data = await r.json();
+        return { ok: r.ok && Array.isArray(data.dates) && data.dates.length > 0, data, symbol: s.symbol };
+      })
     );
 
-    statusEl.style.display = 'none';
-    sectionEl.style.display = '';
+    const failed = payloads.filter(p => !p.ok).map(p => p.symbol);
+    const okPayloads = payloads.filter(p => p.ok);
 
-    renderIndicesChart(results);
+    if (!okPayloads.length) {
+      statusEl.classList.add('alert-danger');
+      statusEl.textContent = 'Failed to load market indices.';
+      return;
+    }
+
+    // Keep INDEX_SYMBOLS and results aligned; drop failed series so the chart still renders
+    if (failed.length) {
+      statusEl.className = 'alert';
+      statusEl.textContent = `Could not load: ${failed.join(', ')}. Showing remaining indices.`;
+      statusEl.style.display = 'block';
+    } else {
+      statusEl.style.display = 'none';
+    }
+
+    // Temporarily narrow INDEX_SYMBOLS for this render via parallel arrays on the results
+    _indicesActiveSymbols = okPayloads.map(p =>
+      INDEX_SYMBOLS.find(s => s.symbol === p.symbol)
+    );
+    sectionEl.style.display = '';
+    renderIndicesChart(okPayloads.map(p => p.data));
 
   } catch (err) {
     statusEl.classList.add('alert-danger');
     statusEl.textContent = `Failed to load indices: ${err.message}`;
   }
 }
+
+/** Symbols successfully loaded for the current indices chart (subset of INDEX_SYMBOLS). */
+let _indicesActiveSymbols = INDEX_SYMBOLS;
 
 let _indicesFullResults  = null;
 let _activeIndicesPeriod = 12;
@@ -82,16 +111,26 @@ function _updateIndexStats(results, months) {
     if (idx !== -1) commonDates = commonDates.slice(idx);
   }
 
+  // Clear all stat slots (supports fewer active series if some failed to load)
+  for (let i = 0; i < INDEX_SYMBOLS.length; i++) {
+    const el = document.getElementById(`indexStats_${i}`);
+    if (el) el.innerHTML = '';
+  }
+
   results.forEach((data, i) => {
-    const s        = INDEX_SYMBOLS[i];
+    const s        = _indicesActiveSymbols[i] || INDEX_SYMBOLS[i];
+    if (!s || !commonDates.length) return;
     const priceMap = new Map(data.dates.map((d, j) => [d, data.prices[j]]));
     const startPrice   = priceMap.get(commonDates[0]);
+    if (startPrice == null || !startPrice) return;
     const currentPrice = data.current_price;
     const change       = currentPrice - startPrice;
     const changePct    = (change / startPrice) * 100;
     const isUp         = change >= 0;
     const sign         = isUp ? '+' : '';
-    document.getElementById(`indexStats_${i}`).innerHTML = `
+    const el = document.getElementById(`indexStats_${i}`);
+    if (!el) return;
+    el.innerHTML = `
       <div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${esc(s.label)}</div>
       <div style="font-size:1.4rem;font-weight:700;color:${s.color}">${fmtPrice(currentPrice)}</div>
       <div style="font-size:0.9rem;font-weight:600" class="${isUp ? 'text-success' : 'text-danger'}">${sign}${fmtPrice(change)} (${sign}${changePct.toFixed(2)}%)</div>`;
@@ -137,7 +176,7 @@ function _drawIndicesChart(results, months) {
 
   // Normalize each series to % change from the first date in the sliced window
   const datasets = results.map((data, i) => {
-    const s        = INDEX_SYMBOLS[i];
+    const s        = _indicesActiveSymbols[i] || INDEX_SYMBOLS[i];
     const priceMap = new Map(data.dates.map((d, j) => [d, data.prices[j]]));
     const prices   = commonDates.map(d => priceMap.get(d));
     const base     = prices[0];

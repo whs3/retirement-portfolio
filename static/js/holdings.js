@@ -92,7 +92,7 @@ function renderTable() {
       byTicker[t].current_value += h.current_value;
     }
     summaryEntries = Object.entries(byTicker)
-      .filter(([, s]) => Math.abs(s.current_value) > 0.01)
+      .filter(([, s]) => Math.abs(Math.round(Number(s.current_value) * 100) / 100) > 0.01)
       .sort(([, a], [, b]) => b.current_value - a.current_value);
   }
 

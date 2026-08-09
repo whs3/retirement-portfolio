@@ -7,6 +7,7 @@ import pytest
 from portfolio.validators import (
     NEGLIGIBLE_VALUE,
     VALID_TICKER,
+    is_significant_value,
     parse_float,
     parse_positive_float,
 )
@@ -77,3 +78,23 @@ class TestParsePositiveFloat:
 
 def test_negligible_value_threshold():
     assert NEGLIGIBLE_VALUE == 0.01
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (100.0, True),
+        (0.02, True),
+        (-0.02, True),
+        (0.01, False),
+        (-0.01, False),
+        (0.0, False),
+        # SPAB-style float noise that formats as ±$0.01
+        (-0.010000000029918965, False),
+        (0.00999999999476131, False),
+        (None, False),
+        (float("nan"), False),
+    ],
+)
+def test_is_significant_value(value, expected):
+    assert is_significant_value(value) is expected

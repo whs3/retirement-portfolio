@@ -6,7 +6,7 @@ from datetime import datetime
 import yfinance as yf
 
 from portfolio.db import get_db
-from portfolio.validators import NEGLIGIBLE_VALUE
+from portfolio.validators import is_significant_value
 
 
 def get_market_snapshot():
@@ -132,13 +132,12 @@ def build_insights() -> dict:
             }
         ticker_value[key]["current_value"] += h["current_value"]
 
-    # Drop fully-sold / rounding-dust positions (e.g. BNDX left at ~$0.01 after
-    # sell-all). Compare on rounded cents so float residuals that display as
-    # $0.01 are excluded and never trigger Yahoo fetches.
+    # Drop fully-sold / rounding-dust positions (e.g. BNDX/SPAB left at ~$0.01
+    # after sell-all). Cent-rounded so float residuals never trigger Yahoo fetches.
     ticker_value = {
         k: v
         for k, v in ticker_value.items()
-        if abs(round(v["current_value"], 2)) > NEGLIGIBLE_VALUE
+        if is_significant_value(v["current_value"])
     }
 
     analyst_results: dict[str, dict] = {}
@@ -211,7 +210,7 @@ def build_insights() -> dict:
 
     holdings_out = [
         h for h in holdings_out
-        if abs(round(h.get("current_value", 0), 2)) > NEGLIGIBLE_VALUE
+        if is_significant_value(h.get("current_value", 0))
     ]
     holdings_out.sort(key=lambda x: x["current_value"], reverse=True)
 

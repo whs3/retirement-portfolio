@@ -11,6 +11,21 @@ VALID_TICKER = re.compile(r"^[\w.\-\^]{1,20}$")
 NEGLIGIBLE_VALUE = 0.01
 
 
+def is_significant_value(value: float, threshold: float = NEGLIGIBLE_VALUE) -> bool:
+    """Return True if *value* is a real position after cent rounding.
+
+    Compares on ``round(value, 2)`` so float residuals like ``-0.01000000003``
+    (displayed as -$0.01) are treated as dust, same as an exact ``±0.01``.
+    """
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return False
+    if math.isnan(n) or math.isinf(n):
+        return False
+    return abs(round(n, 2)) > threshold
+
+
 def parse_positive_float(value, field_name: str) -> float:
     try:
         n = float(value)

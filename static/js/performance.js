@@ -464,13 +464,13 @@ function renderHoldingsChart(dates, holdingsSeries) {
   // Drop closed/dust series (base ~0 charts as ±100% noise) and sort by
   // end-of-period % change (highest first) before assigning colors so tooltip
   // order and line colors stay in sync without Chart.js itemSort.
-  const NEGLIGIBLE = 0.01;
+  const isSignificant = v => Math.abs(Math.round(Number(v) * 100) / 100) > 0.01;
   const chartable = holdingsSeries.filter(h => {
     if (!h.values || !h.values.length) return false;
     const base = h.values[0];
     const last = h.values[h.values.length - 1];
     // Need a real starting value to normalize % change; skip zeroed positions.
-    return Math.abs(base) > NEGLIGIBLE && Math.abs(last) > NEGLIGIBLE;
+    return isSignificant(base) && isSignificant(last);
   });
 
   if (!chartable.length) {

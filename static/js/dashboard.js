@@ -393,7 +393,10 @@ function sortHoldings(col) {
 function renderHoldingsTable() {
   const tbody = document.getElementById('holdingsBody');
 
-  const sorted = [...holdingsGroups].filter(g => Math.abs(g.current_value) > 0.01).sort((a, b) => {
+  // Hide sold residuals after cent rounding (e.g. SPAB at -0.01000000003 → -$0.01).
+  // Raw abs(v) > 0.01 still lets those float-noise values through.
+  const isSignificant = v => Math.abs(Math.round(Number(v) * 100) / 100) > 0.01;
+  const sorted = [...holdingsGroups].filter(g => isSignificant(g.current_value)).sort((a, b) => {
     const av = a[sortCol] ?? '';
     const bv = b[sortCol] ?? '';
     if (typeof av === 'string') return av.localeCompare(bv) * sortDir;

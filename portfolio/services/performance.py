@@ -9,7 +9,7 @@ import yfinance as yf
 
 from portfolio.db import get_db
 from portfolio.services.categories import ASSET_TYPE_FALLBACK, get_ticker_category
-from portfolio.validators import NEGLIGIBLE_VALUE
+from portfolio.validators import NEGLIGIBLE_VALUE, is_significant_value
 
 
 def build_performance() -> dict:
@@ -57,7 +57,7 @@ def build_performance() -> dict:
         t: s
         for t, s in shares_by_ticker.items()
         if abs(s) >= 1e-9
-        and abs(current_value_by_ticker.get(t, 0.0)) > NEGLIGIBLE_VALUE
+        and is_significant_value(current_value_by_ticker.get(t, 0.0))
     }
 
     end_dt = datetime.now()

@@ -3,7 +3,7 @@
 from flask import Blueprint, jsonify, request
 
 from portfolio.db import get_db
-from portfolio.validators import NEGLIGIBLE_VALUE
+from portfolio.validators import is_significant_value
 
 bp = Blueprint("portfolio_api", __name__)
 
@@ -28,7 +28,7 @@ def portfolio_summary():
             "percentage": (v / total_value * 100) if total_value else 0,
         }
         for t, v in sorted(by_type.items())
-        if abs(v) > NEGLIGIBLE_VALUE
+        if is_significant_value(v)
     ]
 
     by_category: dict[str, float] = {}
@@ -49,7 +49,7 @@ def portfolio_summary():
             "positions": len(by_category_tickers.get(cat, set())),
         }
         for cat, val in sorted(by_category.items())
-        if abs(val) > NEGLIGIBLE_VALUE
+        if is_significant_value(val)
     ]
 
     by_owner: dict[str, float] = {}
@@ -65,7 +65,7 @@ def portfolio_summary():
     owner_allocation = [
         {"owner": o, "value": v, "percentage": (v / total_value * 100) if total_value else 0}
         for o, v in sorted(by_owner.items())
-        if abs(v) > NEGLIGIBLE_VALUE
+        if is_significant_value(v)
     ]
     account_type_allocation = [
         {
@@ -74,7 +74,7 @@ def portfolio_summary():
             "percentage": (v / total_value * 100) if total_value else 0,
         }
         for a, v in sorted(by_account_type.items())
-        if abs(v) > NEGLIGIBLE_VALUE
+        if is_significant_value(v)
     ]
 
     return jsonify({

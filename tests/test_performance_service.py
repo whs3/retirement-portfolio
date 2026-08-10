@@ -16,7 +16,8 @@ def _make_price_frame(tickers, days=40, start_price=100.0):
     data = {}
     for i, tkr in enumerate(tickers):
         # Gentle upward drift so start != end
-        prices = [start_price + i * 10 + d * 0.1 for d in range(days)]
+        #prices = [start_price + i * 10 + d * 0.1 for d in range(days)]
+        prices = [start_price + i * 10 + d * 0.1 for d in range(len(dates))]
         data[("Close", tkr)] = prices
     df = pd.DataFrame(data, index=dates)
     df.columns = pd.MultiIndex.from_tuples(df.columns)

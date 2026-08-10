@@ -10,7 +10,8 @@ from portfolio.services.lookup import lookup_ticker_data
 
 def _hist(days=30, start=100.0):
     dates = pd.bdate_range(end=datetime.now(), periods=days)
-    prices = [start + i * 0.5 for i in range(days)]
+    #prices = [start + i * 0.5 for i in range(days)]
+    prices = [start + i * 0.5 for i in range(len(dates))]
     return pd.DataFrame({"Close": prices}, index=dates)
 
 

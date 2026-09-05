@@ -88,6 +88,75 @@ body {
 
 .last-updated { font-size: .75rem; color: var(--text-muted); }
 
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.auto-refresh-widget {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  padding: .5rem .75rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  min-width: 14rem;
+}
+
+.auto-refresh-label {
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+}
+
+.auto-refresh-controls {
+  display: flex;
+  align-items: center;
+  gap: .375rem;
+}
+
+.auto-refresh-controls input[type="number"] {
+  width: 4.25rem;
+  padding: .25rem .4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: .875rem;
+  color: var(--text);
+  background: #fff;
+}
+
+.auto-refresh-controls input[type="number"]:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+
+.auto-refresh-controls input[type="number"]:disabled {
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+.auto-refresh-unit {
+  font-size: .8rem;
+  color: var(--text-muted);
+}
+
+.auto-refresh-status {
+  font-size: .7rem;
+  color: var(--text-muted);
+}
+
+.auto-refresh-widget.is-off .auto-refresh-status {
+  color: var(--warning);
+}
+
 .grid-2 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));

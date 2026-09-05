@@ -10,10 +10,10 @@ The backend is organized as a `portfolio` Python package with an app factory, bl
 
 | Page | Description |
 |------|-------------|
-| **Dashboard** | Total value, cost basis, gain/loss; allocation by asset type, category, owner, and account type; holdings summary; one-click price refresh |
+| **Dashboard** | Total value, cost basis, gain/loss; allocation by asset type, category, owner, and account type; holdings summary; one-click price refresh; auto-refresh interval widget (default 15 minutes, 0 = off) |
 | **Holdings** | Add, edit, delete positions (stocks, bonds, ETFs, mutual funds, cash); owner and account type; sell via negative amounts or **Sell all**; live Yahoo Finance prices; search/sort/filter |
 | **Performance** | Portfolio value over time (3M / 6M / YTD / 12M); stacked category breakdown; individual holdings % change; monthly gain/loss table |
-| **Price Lookup** | 12-month history for any ticker; market indices on open (S&P 500, NASDAQ, Russell 2000, short-term Treasuries); analyst data for stocks; fund family, category, AUM, expense ratio, tracked index for funds |
+| **Price Lookup** | 12-month history for any ticker; market indices on open (S&P 500, NASDAQ, S&P MidCap 400, Russell 2000, short-term Treasuries); analyst data for stocks; fund family, category, AUM, expense ratio, tracked index for funds |
 | **Overlap** | Break ETFs/funds into underlying stocks and show concentration across the whole portfolio |
 | **Rebalance** | Category target allocations with Buy / Sell / Hold recommendations |
 | **Insights** | Analyst consensus, sentiment mix, expense/valuation signals, and high-level recommendations |
@@ -193,7 +193,7 @@ All JSON APIs are same-origin. Mutating requests need a CSRF token (`X-CSRFToken
 | GET | `/api/insights` | Analyst / market insights (rate limited) |
 | GET | `/api/lookup/<ticker>` | Price history and metadata |
 | GET | `/api/price/<ticker>` | Current price for one ticker |
-| GET/PUT | `/api/settings` | App settings (API keys masked on GET) |
+| GET/PUT | `/api/settings` | App settings (API keys masked on GET; `price_refresh_minutes`) |
 | GET | `/api/audit` | Parsed audit log entries |
 | GET | `/api/export/csv` | CSV download |
 
@@ -204,11 +204,11 @@ All JSON APIs are same-origin. Mutating requests need a CSRF token (`X-CSRFToken
 Designed for **home-lab / LAN** use, not public internet exposure:
 
 - **Network allowlist** — only `127.0.0.1`, `::1`, and `192.168.*` clients; others get HTTP 403
-- **CSRF protection** — Flask-WTF on state-changing requests
+- **CSRF protection** — Flask-WTF on state-changing requests; tokens do not expire while the tab stays open, and the frontend retries once with a fresh token on CSRF failure
 - **Rate limits** — expensive endpoints (price refresh, overlap, performance, insights)
 - **Input validation** — ticker format and numeric fields (NaN/inf rejected; sells allow negatives)
 - **Response headers** — `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`
-- **Settings** — FMP API key stored server-side; API only reports whether it is set
+- **Settings** — FMP API key stored server-side; API only reports whether it is set. Price auto-refresh interval (`price_refresh_minutes`, default 15, `0` = off) is stored the same way and applied by a background thread.
 
 If you reverse-proxy or expose the app beyond the LAN, add authentication and HTTPS yourself; the built-in allowlist is not a substitute for a proper auth layer.
 

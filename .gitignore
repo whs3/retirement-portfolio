@@ -5,6 +5,7 @@ portfolio.db-journal
 portfolio_audit.log
 .secret_key
 .env
+retirement-portfolio.env
 backups/
 __pycache__/
 *.pyc

@@ -19,7 +19,7 @@ def _apply_connection_pragmas(conn: sqlite3.Connection) -> None:
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(current_app.config["DATABASE"])
+        g.db = sqlite3.connect(current_app.config["DATABASE"], timeout=30)
         g.db.row_factory = sqlite3.Row
         _apply_connection_pragmas(g.db)
     return g.db
@@ -94,6 +94,21 @@ def init_db(database_path: str | None = None):
         CREATE TABLE IF NOT EXISTS settings (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL DEFAULT ''
+        );
+        """
+    )
+    conn.commit()
+    # Daily portfolio value snapshots (one row per calendar date; upserted).
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+            date             TEXT PRIMARY KEY,
+            total_value      REAL NOT NULL,
+            total_cost_basis REAL NOT NULL,
+            category_json    TEXT NOT NULL,
+            holdings_json    TEXT NOT NULL,
+            untracked_value  REAL NOT NULL,
+            created_at       TEXT NOT NULL
         );
         """
     )

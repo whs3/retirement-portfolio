@@ -117,6 +117,9 @@ class Config:
         os.getenv("SECRET_KEY_FILE", str(PROJECT_ROOT / ".secret_key"))
     )
     WTF_CSRF_HEADERS = ["X-CSRFToken"]
+    # None = token stays valid for the browser session. The default of 3600s
+    # breaks dashboard auto-refresh once the page has been open for an hour.
+    WTF_CSRF_TIME_LIMIT = None
     TEMPLATES_AUTO_RELOAD = True
     TESTING = False
     # flask-limiter: set False in tests to avoid rate-limit noise

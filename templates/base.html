@@ -9,16 +9,54 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script>
-    // Attach CSRF token to all state-changing fetch requests automatically
+    // Attach CSRF token to all state-changing fetch requests automatically.
+    // Re-read the meta tag on each request, and if Flask-WTF rejects a stale
+    // token (common on a dashboard left open for hours), fetch a fresh one
+    // and retry once so the user does not have to reload the page.
     (function () {
-      const token = document.querySelector('meta[name="csrf-token"]').content;
-      const _fetch = window.fetch;
-      window.fetch = (url, opts = {}) => {
+      const meta = () => document.querySelector('meta[name="csrf-token"]');
+      const getToken = () => (meta() && meta().content) || '';
+      const setToken = (token) => { if (meta() && token) meta().setAttribute('content', token); };
+      const _fetch = window.fetch.bind(window);
+
+      function isCsrfFailure(res, body, text) {
+        if (res.status !== 400) return false;
+        if (body && typeof body === 'object' && body.code === 'csrf') return true;
+        const msg = (body && (body.error || body.message)) || text || '';
+        return /csrf|session expired|400 Bad Request/i.test(String(msg));
+      }
+
+      window.fetch = async (url, opts = {}) => {
         const method = (opts.method || 'GET').toUpperCase();
-        if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-          opts.headers = Object.assign({ 'X-CSRFToken': token }, opts.headers || {});
+        const mutating = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method);
+        opts = Object.assign({}, opts);
+        if (mutating) {
+          opts.headers = Object.assign({ 'X-CSRFToken': getToken() }, opts.headers || {});
         }
-        return _fetch(url, opts);
+        let res = await _fetch(url, opts);
+        if (mutating && res.status === 400 && !opts._csrfRetried) {
+          const clone = res.clone();
+          const ct = clone.headers.get('content-type') || '';
+          let body = null;
+          let text = '';
+          try {
+            if (ct.includes('application/json')) body = await clone.json();
+            else text = await clone.text();
+          } catch (e) { /* ignore */ }
+          if (isCsrfFailure(res, body, text)) {
+            try {
+              const tokRes = await _fetch('/api/csrf-token');
+              if (tokRes.ok) {
+                const data = await tokRes.json();
+                setToken(data.csrf_token);
+              }
+            } catch (e) { /* ignore and retry with whatever token we have */ }
+            opts._csrfRetried = true;
+            opts.headers = Object.assign({}, opts.headers, { 'X-CSRFToken': getToken() });
+            res = await _fetch(url, opts);
+          }
+        }
+        return res;
       };
     })();
 

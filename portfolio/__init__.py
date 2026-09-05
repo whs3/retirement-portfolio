@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from flask import Flask, jsonify
+from flask_wtf.csrf import CSRFError, generate_csrf
 
 from portfolio.config import Config
 from portfolio.db import close_db, init_db
@@ -10,6 +11,7 @@ from portfolio.extensions import csrf, limiter
 from portfolio.routes import register_blueprints
 from portfolio.security import local_network_only, security_headers
 from portfolio.services.audit import init_audit_log
+from portfolio.services.price_scheduler import start_price_refresh_scheduler
 from portfolio.timezone_util import SERVER_TIMEZONE
 
 # Project root (parent of the portfolio package) — templates/ and static/ live here
@@ -59,5 +61,18 @@ def create_app(config_object=Config):
             "error": "Rate limit exceeded. Please wait a moment before trying again."
         }), 429
 
+    @app.errorhandler(CSRFError)
+    def csrf_error_handler(e):
+        """JSON instead of Flask-WTF's HTML 400 page so the UI can retry."""
+        return jsonify({
+            "error": "Session expired. Retrying with a fresh security token.",
+            "code": "csrf",
+        }), 400
+
+    @app.route("/api/csrf-token")
+    def csrf_token_api():
+        return jsonify({"csrf_token": generate_csrf()})
+
     register_blueprints(app)
+    start_price_refresh_scheduler(app)
     return app

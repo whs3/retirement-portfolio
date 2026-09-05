@@ -427,19 +427,31 @@ function renderHoldingsTable() {
   }).join('');
 }
 
-function updateTimestamp() {
+function updateTimestamp(when) {
+  const d = when instanceof Date ? when : new Date();
   document.getElementById('lastUpdated').textContent =
-    'As of ' + new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: document.querySelector('meta[name="server-timezone"]').content });
+    'As of ' + d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: document.querySelector('meta[name="server-timezone"]').content });
 }
 
-async function refreshPrices() {
+let refreshInFlight = false;
+
+async function refreshPrices(opts = {}) {
+  const silent = !!opts.silent;
+  if (refreshInFlight) return;
+  refreshInFlight = true;
+
   const btn    = document.getElementById('refreshBtn');
   const status = document.getElementById('refreshStatus');
 
-  btn.disabled    = true;
-  btn.textContent = 'Refreshing…';
-  status.style.display = 'none';
-  status.className     = 'alert';
+  if (btn) {
+    btn.disabled    = true;
+    btn.textContent = 'Refreshing…';
+  }
+  if (!silent && status) {
+    status.style.display = 'none';
+    status.className     = 'alert';
+  }
+  paintRefreshStatus();
 
   try {
     const data = await apiFetch('/api/holdings/refresh-prices', { method: 'POST' });
@@ -449,25 +461,179 @@ async function refreshPrices() {
     if (data.skipped.length) parts.push(`Skipped (no price): ${data.skipped.join(', ')}.`);
     if (data.errors.length)  parts.push(`Errors: ${data.errors.map(e => `${e.ticker} — ${e.error}`).join('; ')}.`);
 
-    status.textContent   = parts.join('  ') || 'No tickered holdings to update.';
-    status.style.display = 'block';
-    status.classList.add(data.errors.length ? 'alert-danger' : 'alert-success');
+    if (status && (!silent || data.errors.length)) {
+      status.textContent   = parts.join('  ') || 'No tickered holdings to update.';
+      status.style.display = 'block';
+      status.className     = 'alert';
+      status.classList.add(data.errors.length ? 'alert-danger' : 'alert-success');
+    }
 
-    updateTimestamp();
+    lastRefreshAt = new Date();
+    updateTimestamp(lastRefreshAt);
     loadSummary();
     loadHoldings();
   } catch (err) {
-    status.textContent   = `Request failed: ${err.message}`;
-    status.style.display = 'block';
-    status.classList.add('alert-danger');
+    if (status) {
+      status.textContent   = `Request failed: ${err.message}`;
+      status.style.display = 'block';
+      status.className     = 'alert alert-danger';
+    }
   } finally {
-    btn.disabled    = false;
-    btn.textContent = 'Refresh Prices';
+    refreshInFlight = false;
+    if (btn) {
+      btn.disabled    = false;
+      btn.textContent = 'Refresh Prices';
+    }
+    paintRefreshStatus();
   }
+}
+
+const DEFAULT_REFRESH_MINUTES = 15;
+
+let currentRefreshMinutes = DEFAULT_REFRESH_MINUTES;
+let lastPositiveMinutes = DEFAULT_REFRESH_MINUTES;
+let intervalSaveTimer = null;
+let priceRefreshTimer = null;
+let countdownTimer = null;
+let nextRefreshAt = 0;
+let lastRefreshAt = null;
+
+function formatCountdown(ms) {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = String(totalSec % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function paintRefreshStatus() {
+  const status = document.getElementById('refreshIntervalStatus');
+  if (!status) return;
+  if (currentRefreshMinutes <= 0) {
+    status.textContent = 'off';
+    return;
+  }
+  if (refreshInFlight) {
+    status.textContent = 'refreshing prices…';
+    return;
+  }
+  const every = currentRefreshMinutes === 1 ? 'every 1 min' : `every ${currentRefreshMinutes} min`;
+  if (nextRefreshAt) {
+    status.textContent = `${every} · next ${formatCountdown(nextRefreshAt - Date.now())}`;
+  } else {
+    status.textContent = every;
+  }
+}
+
+function stopPriceRefreshTimer() {
+  if (priceRefreshTimer) {
+    clearTimeout(priceRefreshTimer);
+    priceRefreshTimer = null;
+  }
+  if (countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+  nextRefreshAt = 0;
+}
+
+function schedulePriceRefresh(minutes) {
+  stopPriceRefreshTimer();
+  if (minutes <= 0) {
+    paintRefreshStatus();
+    return;
+  }
+  nextRefreshAt = Date.now() + minutes * 60 * 1000;
+  priceRefreshTimer = setTimeout(async () => {
+    await refreshPrices({ silent: true });
+    if (currentRefreshMinutes > 0) schedulePriceRefresh(currentRefreshMinutes);
+  }, minutes * 60 * 1000);
+  countdownTimer = setInterval(paintRefreshStatus, 1000);
+  paintRefreshStatus();
+}
+
+function applyRefreshWidget(minutes) {
+  const input = document.getElementById('refreshIntervalInput');
+  const offBtn = document.getElementById('refreshOffBtn');
+  const widget = document.getElementById('autoRefreshWidget');
+  if (!input || !offBtn || !widget) return;
+
+  currentRefreshMinutes = minutes;
+  if (minutes > 0) lastPositiveMinutes = minutes;
+
+  input.value = String(minutes);
+  widget.classList.toggle('is-off', minutes <= 0);
+  offBtn.textContent = minutes <= 0 ? 'On' : 'Off';
+  offBtn.title = minutes <= 0
+    ? `Turn auto-refresh on (${lastPositiveMinutes} min)`
+    : 'Turn auto-refresh off';
+
+  schedulePriceRefresh(minutes);
+}
+
+async function loadRefreshSetting() {
+  try {
+    const data = await apiFetch('/api/settings');
+    const minutes = parseInt(data.price_refresh_minutes, 10);
+    applyRefreshWidget(Number.isFinite(minutes) ? minutes : DEFAULT_REFRESH_MINUTES);
+  } catch (err) {
+    applyRefreshWidget(DEFAULT_REFRESH_MINUTES);
+    console.error('loadRefreshSetting failed:', err);
+  }
+}
+
+async function saveRefreshInterval(minutes) {
+  const status = document.getElementById('refreshIntervalStatus');
+  applyRefreshWidget(minutes);
+  if (status) status.textContent = 'saving…';
+  try {
+    await apiFetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ price_refresh_minutes: String(minutes) }),
+    });
+    paintRefreshStatus();
+  } catch (err) {
+    if (status) status.textContent = err.message || 'Save failed';
+    console.error('saveRefreshInterval failed:', err);
+  }
+}
+
+function queueRefreshIntervalSave(raw) {
+  const minutes = parseInt(raw, 10);
+  if (!Number.isFinite(minutes) || minutes < 0 || minutes > 1440) return;
+  if (intervalSaveTimer) clearTimeout(intervalSaveTimer);
+  intervalSaveTimer = setTimeout(() => saveRefreshInterval(minutes), 400);
+}
+
+function initRefreshWidget() {
+  const input = document.getElementById('refreshIntervalInput');
+  const offBtn = document.getElementById('refreshOffBtn');
+  if (!input || !offBtn) return;
+
+  input.addEventListener('input', () => queueRefreshIntervalSave(input.value));
+  input.addEventListener('change', () => {
+    const minutes = parseInt(input.value, 10);
+    if (!Number.isFinite(minutes) || minutes < 0 || minutes > 1440) {
+      applyRefreshWidget(currentRefreshMinutes);
+      return;
+    }
+    if (intervalSaveTimer) clearTimeout(intervalSaveTimer);
+    saveRefreshInterval(minutes);
+  });
+  offBtn.addEventListener('click', () => {
+    if (intervalSaveTimer) clearTimeout(intervalSaveTimer);
+    if (currentRefreshMinutes > 0) {
+      saveRefreshInterval(0);
+    } else {
+      saveRefreshInterval(lastPositiveMinutes || DEFAULT_REFRESH_MINUTES);
+    }
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   updateTimestamp();
+  initRefreshWidget();
+  loadRefreshSetting();
   loadSummary();
   loadHoldings();
 });

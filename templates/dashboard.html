@@ -4,7 +4,18 @@
 {% block content %}
 <div class="page-header">
   <h1>Portfolio Dashboard</h1>
-  <div style="display:flex;align-items:center;gap:1rem">
+  <div class="page-header-actions">
+    <div class="auto-refresh-widget" id="autoRefreshWidget">
+      <div class="auto-refresh-label">Auto-refresh</div>
+      <div class="auto-refresh-controls">
+        <input type="number" id="refreshIntervalInput" min="0" max="1440" step="1"
+               title="Minutes between price updates. 0 turns auto-refresh off."
+               aria-label="Auto-refresh interval in minutes">
+        <span class="auto-refresh-unit">min</span>
+        <button type="button" class="btn btn-sm btn-secondary" id="refreshOffBtn">Off</button>
+      </div>
+      <div class="auto-refresh-status" id="refreshIntervalStatus">every 15 min · next —</div>
+    </div>
     <span class="last-updated" id="lastUpdated"></span>
     <button class="btn btn-secondary" id="refreshBtn" onclick="refreshPrices()">Refresh Prices</button>
   </div>

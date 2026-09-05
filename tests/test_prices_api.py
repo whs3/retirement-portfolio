@@ -61,7 +61,7 @@ def test_refresh_prices(client, seed_holdings):
         t.fast_info.last_price = price
         return t
 
-    with patch("portfolio.routes.prices.yf.Ticker", side_effect=fake_ticker):
+    with patch("portfolio.services.prices.yf.Ticker", side_effect=fake_ticker):
         r = client.post("/api/holdings/refresh-prices")
 
     assert r.status_code == 200

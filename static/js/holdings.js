@@ -329,6 +329,47 @@ async function refreshPrices() {
   }
 }
 
+async function importCsv(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+
+  const status = document.getElementById('refreshStatus');
+  const btn    = document.getElementById('importBtn');
+
+  status.style.display = 'none';
+  status.className     = 'alert';
+  btn.disabled          = true;
+  btn.textContent       = 'Importing…';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res  = await fetch('/api/import/csv', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (!res.ok) {
+      const rowMsgs = (data.row_errors || []).map(e => `Row ${e.row}: ${e.error}`);
+      status.textContent = rowMsgs.length
+        ? `${data.error} — ${rowMsgs.join('; ')}`
+        : (data.error || 'Import failed.');
+      status.classList.add('alert-danger');
+    } else {
+      status.textContent = `Imported ${data.imported} holding(s).`;
+      status.classList.add('alert-success');
+      loadHoldings();
+    }
+    status.style.display = 'block';
+  } catch (err) {
+    status.textContent   = `Request failed: ${err.message}`;
+    status.style.display = 'block';
+    status.classList.add('alert-danger');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Import CSV';
+    input.value     = '';
+  }
+}
+
 async function fetchPrice() {
   const ticker = document.getElementById('ticker').value.trim().toUpperCase();
   if (!ticker) return;

@@ -10,10 +10,10 @@ const _CHANGE_LABELS  = { 1: '1-Month Change', 3: '3-Month Change', 6: '6-Month 
 // ── Market Indices (auto-loaded on page open) ─────────────────────────────────
 
 const INDEX_SYMBOLS = [
-  { symbol: '^GSPC', label: 'S&P 500',                 color: '#2563eb' },
-  { symbol: '^IXIC', label: 'NASDAQ',                  color: '#d97706' },
-  // Russell 2000: standard mid/small-cap equity benchmark (complements large-cap S&P 500)
-  { symbol: '^RUT',  label: 'Russell 2000 (Mid/Small)', color: '#16a34a' },
+  { symbol: '^GSPC', label: 'S&P 500',                  color: '#2563eb' },
+  { symbol: '^IXIC', label: 'NASDAQ',                   color: '#d97706' },
+  { symbol: '^MID',  label: 'S&P MidCap 400',           color: '#0891b2' },
+  { symbol: '^RUT',  label: 'Russell 2000 (Small Cap)', color: '#16a34a' },
   // iShares 1–3 Year Treasury Bond ETF — liquid proxy for short-term gov bonds
   { symbol: 'SHY',   label: 'Short-Term Treasuries',    color: '#7c3aed' },
 ];

@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 
 from portfolio.db import get_db
 from portfolio.services.audit import audit
-from portfolio.validators import VALID_TICKER, parse_float
+from portfolio.validators import VALID_TICKER, is_significant_value, parse_float
 
 bp = Blueprint("holdings", __name__)
 
@@ -172,9 +172,17 @@ def delete_holding(hid):
 
 @bp.route("/api/holdings/sell-all", methods=["POST"])
 def sell_all_holding():
-    """Zero out a position by inserting one offsetting entry equal to the exact
-    negation of the summed shares/cost_basis/current_value currently on file for
-    the given ticker+owner+account_type.
+    """Close out a position by collapsing every matching lot into a single
+    zeroed-out row for the given ticker+owner+account_type.
+
+    Individual lots each get their own current_value re-rounded to the cent
+    on every price refresh (see services.prices.refresh_all_prices), so
+    appending one offsetting lot next to the originals cannot reliably keep
+    the group's total at exactly $0 -- the untouched original lots keep
+    re-rounding independently every refresh cycle and drift a cent or two
+    away from zero. Deleting the lots and replacing them with one row at
+    shares=0 sidesteps that: 0 shares always reprices to exactly $0.00, no
+    matter how many refreshes happen afterward.
     """
     data = request.get_json() or {}
     ticker = (data.get("ticker") or "").strip().upper()
@@ -198,16 +206,22 @@ def sell_all_holding():
     total_cost_basis = sum(r["cost_basis"] for r in rows)
     total_current_value = sum(r["current_value"] for r in rows)
 
-    if abs(total_shares) < 1e-9 and abs(total_current_value) < 0.005:
+    already_flat = len(rows) == 1 and rows[0]["shares"] == 0 and rows[0]["cost_basis"] == 0
+    if already_flat or (
+        abs(total_shares) < 1e-6 and not is_significant_value(total_current_value)
+    ):
         return jsonify({"error": f"{ticker} is already fully sold"}), 400
 
     ref = rows[0]
     now = datetime.utcnow().isoformat()
+    db.executemany(
+        "DELETE FROM holdings WHERE id = ?", [(r["id"],) for r in rows]
+    )
     cur = db.execute(
         """INSERT INTO holdings
                (name, ticker, asset_type, category, owner, account_type, shares,
                 cost_basis, current_value, purchase_date, notes, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?)""",
         (
             ref["name"],
             ticker,
@@ -215,11 +229,8 @@ def sell_all_holding():
             ref["category"],
             owner,
             account_type,
-            -total_shares,
-            -total_cost_basis,
-            -total_current_value,
             datetime.utcnow().strftime("%Y-%m-%d"),
-            "Sell all shares",
+            "Sold all shares",
             now,
             now,
         ),

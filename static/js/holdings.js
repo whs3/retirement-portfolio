@@ -39,19 +39,14 @@ function sortHoldings(col) {
   renderTable();
 }
 
-function renderTable() {
-  const tbody = document.getElementById('holdingsBody');
-  const query           = (document.getElementById('holdingsSearch')?.value ?? '').trim().toLowerCase();
-  const ownerFilter     = document.getElementById('ownerFilter')?.value ?? '';
-  const accountFilter   = document.getElementById('accountTypeFilter')?.value ?? '';
+// Rows visible under the current search box + owner/account filters, with
+// derived sort fields. Shared by the table body, the ticker summary, and
+// sellAllTicker() so "Sell All" only ever acts on what's on screen.
+function getFilteredHoldings() {
+  const query         = (document.getElementById('holdingsSearch')?.value ?? '').trim().toLowerCase();
+  const ownerFilter   = document.getElementById('ownerFilter')?.value ?? '';
+  const accountFilter = document.getElementById('accountTypeFilter')?.value ?? '';
 
-  if (!holdings.length) {
-    tbody.innerHTML = `<tr><td colspan="13" class="text-center text-muted" style="padding:2rem">
-      No holdings yet. Click "Add Holding" to get started.</td></tr>`;
-    return;
-  }
-
-  // Augment with derived sort fields
   const rows = holdings.map(h => ({
     ...h,
     gain:    h.current_value - h.cost_basis,
@@ -59,14 +54,7 @@ function renderTable() {
     pps:     h.shares !== 0 ? h.current_value / h.shares : 0,
   }));
 
-  rows.sort((a, b) => {
-    const av = a[sortCol] ?? '';
-    const bv = b[sortCol] ?? '';
-    if (typeof av === 'string') return av.localeCompare(bv) * sortDir;
-    return (av - bv) * sortDir;
-  });
-
-  const filtered = (query || ownerFilter || accountFilter)
+  return (query || ownerFilter || accountFilter)
     ? rows.filter(h =>
         (!query || (h.name ?? '').toLowerCase().includes(query) ||
                    (h.ticker ?? '').toLowerCase().includes(query) ||
@@ -75,6 +63,24 @@ function renderTable() {
         (!accountFilter || h.account_type === accountFilter)
       )
     : rows;
+}
+
+function renderTable() {
+  const tbody = document.getElementById('holdingsBody');
+
+  if (!holdings.length) {
+    tbody.innerHTML = `<tr><td colspan="13" class="text-center text-muted" style="padding:2rem">
+      No holdings yet. Click "Add Holding" to get started.</td></tr>`;
+    return;
+  }
+
+  const filtered = getFilteredHoldings();
+  filtered.sort((a, b) => {
+    const av = a[sortCol] ?? '';
+    const bv = b[sortCol] ?? '';
+    if (typeof av === 'string') return av.localeCompare(bv) * sortDir;
+    return (av - bv) * sortDir;
+  });
 
   // Update sort indicators
   document.querySelectorAll('.sort-indicator').forEach(el => {
@@ -100,18 +106,23 @@ function renderTable() {
     const totalShares = summaryEntries.reduce((sum, [, s]) => sum + s.shares, 0);
     const totalValue  = summaryEntries.reduce((sum, [, s]) => sum + s.current_value, 0);
     const summaryRows = summaryEntries.map(([ticker, s]) => {
-        const sharesStr = s.shares !== 0 ? parseFloat(s.shares.toFixed(6)).toString() : '—';
+        const sharesStr  = s.shares !== 0 ? parseFloat(s.shares.toFixed(6)).toString() : '—';
+        const sellButton = (ticker !== '—' && ticker !== '$$CASH')
+          ? `<button class="btn btn-sm btn-warning" onclick="sellAllTicker('${esc(ticker)}')">Sell All</button>`
+          : '';
         return `<tr>
           <td style="padding:0.2rem 1.5rem 0.2rem 0"><strong>${esc(ticker)}</strong></td>
           <td style="padding:0.2rem 1.5rem 0.2rem 0;text-align:right">${sharesStr}</td>
-          <td style="padding:0.2rem 0;text-align:right">${fmt(s.current_value)}</td>
+          <td style="padding:0.2rem 1.5rem 0.2rem 0;text-align:right">${fmt(s.current_value)}</td>
+          <td style="padding:0.2rem 0">${sellButton}</td>
         </tr>`;
       }).join('');
     const totalSharesStr = totalShares !== 0 ? parseFloat(totalShares.toFixed(6)).toString() : '—';
     const totalRow = `<tr style="border-top:2px solid var(--border,#dee2e6)">
       <td style="padding:0.3rem 1.5rem 0.2rem 0"><strong>Total</strong></td>
       <td style="padding:0.3rem 1.5rem 0.2rem 0;text-align:right"><strong>${totalSharesStr}</strong></td>
-      <td style="padding:0.3rem 0;text-align:right"><strong>${fmt(totalValue)}</strong></td>
+      <td style="padding:0.3rem 1.5rem 0.2rem 0;text-align:right"><strong>${fmt(totalValue)}</strong></td>
+      <td></td>
     </tr>`;
     summaryEl.innerHTML = `
       <div style="font-size:0.8rem;color:var(--text-muted,#6c757d);margin-bottom:0.35rem;text-transform:uppercase;letter-spacing:0.05em">Summary by ticker</div>
@@ -119,7 +130,8 @@ function renderTable() {
         <thead><tr>
           <th style="text-align:left;padding:0.2rem 1.5rem 0.2rem 0;border-bottom:1px solid var(--border,#dee2e6)">Ticker</th>
           <th style="text-align:right;padding:0.2rem 1.5rem 0.2rem 0;border-bottom:1px solid var(--border,#dee2e6)">Total Shares</th>
-          <th style="text-align:right;padding:0.2rem 0;border-bottom:1px solid var(--border,#dee2e6)">Total Current Value</th>
+          <th style="text-align:right;padding:0.2rem 1.5rem 0.2rem 0;border-bottom:1px solid var(--border,#dee2e6)">Total Current Value</th>
+          <th style="border-bottom:1px solid var(--border,#dee2e6)"></th>
         </tr></thead>
         <tbody>${summaryRows}${totalRow}</tbody>
       </table>`;
@@ -154,7 +166,6 @@ function renderTable() {
       <td>${esc(h.account_type) || '—'}</td>
       <td class="col-actions">
         <button class="btn btn-sm btn-secondary" onclick="openModal(${h.id})">Edit</button>
-        ${h.ticker && h.ticker !== '$$CASH' ? `<button class="btn btn-sm btn-warning" onclick="sellAll(${h.id})">Sell All</button>` : ''}
         <button class="btn btn-sm btn-danger"    onclick="deleteHolding(${h.id}, '${esc(h.name)}')">Delete</button>
       </td>
     </tr>`;
@@ -248,39 +259,48 @@ async function submitForm(event) {
   }
 }
 
-async function sellAll(id) {
-  const h = holdings.find(x => x.id === id);
-  if (!h || !h.ticker) return;
+async function sellAllTicker(ticker) {
+  const matches = getFilteredHoldings().filter(h => (h.ticker || '—') === ticker);
+  if (!matches.length) return;
 
-  const matches = holdings.filter(x =>
-    x.ticker === h.ticker && x.owner === h.owner && x.account_type === h.account_type);
   const totalShares = matches.reduce((sum, x) => sum + x.shares, 0);
   const totalValue  = matches.reduce((sum, x) => sum + x.current_value, 0);
 
-  if (Math.abs(totalShares) < 1e-9 && Math.abs(totalValue) < 0.005) {
-    alert(`${h.ticker} is already fully sold for ${h.owner || 'Unassigned'} / ${h.account_type || 'Unassigned'}.`);
+  if (Math.abs(totalShares) < 1e-6 && Math.abs(Math.round(totalValue * 100) / 100) <= 0.01) {
+    alert(`${ticker} is already fully sold.`);
     return;
   }
 
-  const sharesStr = parseFloat(totalShares.toFixed(6));
-  const label = `${h.owner || 'Unassigned'} / ${h.account_type || 'Unassigned'}`;
+  // A ticker can be split across multiple owner/account combos; the backend
+  // only closes one combo per call, so fan out to every combo shown here.
+  const groups = [...new Map(
+    matches.map(h => [`${h.owner} ${h.account_type}`, { owner: h.owner, account_type: h.account_type }])
+  ).values()];
+
+  const sharesStr  = parseFloat(totalShares.toFixed(6));
+  const groupLabel = groups.length > 1
+    ? `across ${groups.length} owner/account groups`
+    : `(${groups[0].owner || 'Unassigned'} / ${groups[0].account_type || 'Unassigned'})`;
   if (!confirm(
-    `Sell all ${sharesStr} shares of ${h.ticker} (${label})?\n\n` +
-    `This adds an offsetting entry that zeroes out the current value (${fmt(totalValue)}).`
+    `Sell all ${sharesStr} shares of ${ticker} ${groupLabel}?\n\n` +
+    `This replaces all matching lots with closed $0 positions (currently ${fmt(totalValue)}).`
   )) return;
 
-  const res = await fetch('/api/holdings/sell-all', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ ticker: h.ticker, owner: h.owner, account_type: h.account_type }),
-  });
-  const result = await res.json();
-
-  if (res.ok) {
-    loadHoldings();
-  } else {
-    alert(result.error ?? 'Failed to sell holding.');
+  const errors = [];
+  for (const g of groups) {
+    const res = await fetch('/api/holdings/sell-all', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ ticker, owner: g.owner, account_type: g.account_type }),
+    });
+    if (!res.ok) {
+      const result = await res.json();
+      errors.push(result.error ?? `Failed for ${g.owner || 'Unassigned'} / ${g.account_type || 'Unassigned'}`);
+    }
   }
+
+  loadHoldings();
+  if (errors.length) alert(errors.join('\n'));
 }
 
 async function deleteHolding(id, name) {

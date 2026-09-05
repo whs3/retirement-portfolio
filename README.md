@@ -10,9 +10,9 @@ The backend is organized as a `portfolio` Python package with an app factory, bl
 
 | Page | Description |
 |------|-------------|
-| **Dashboard** | Total value, cost basis, gain/loss; allocation by asset type, category, owner, and account type; holdings summary; one-click price refresh; auto-refresh interval widget (default 15 minutes, 0 = off) |
+| **Dashboard** | Total value, cost basis, gain/loss; allocation by asset type, category, owner, and account type; holdings summary; one-click price refresh; auto-refresh interval widget (default 15 minutes, 0 = off); drift alert banner when a category is 5+ points off its rebalance target |
 | **Holdings** | Add, edit, delete positions (stocks, bonds, ETFs, mutual funds, cash); owner and account type; sell via negative amounts or **Sell all**; live Yahoo Finance prices; search/sort/filter |
-| **Performance** | Portfolio value over time (3M / 6M / YTD / 12M); stacked category breakdown; individual holdings % change; monthly gain/loss table |
+| **Performance** | Portfolio value over time (3M / 6M / YTD / 12M); optional benchmark comparison (S&P 500, NASDAQ, Russell 2000, S&P MidCap 400, or short-term Treasuries); stacked category breakdown; individual holdings % change; monthly gain/loss table |
 | **Price Lookup** | 12-month history for any ticker; market indices on open (S&P 500, NASDAQ, S&P MidCap 400, Russell 2000, short-term Treasuries); analyst data for stocks; fund family, category, AUM, expense ratio, tracked index for funds |
 | **Overlap** | Break ETFs/funds into underlying stocks and show concentration across the whole portfolio |
 | **Rebalance** | Category target allocations with Buy / Sell / Hold recommendations |

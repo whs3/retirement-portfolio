@@ -3,8 +3,20 @@
 let perfChart       = null;
 let categoriesChart = null;
 let holdingsChart   = null;
+let benchmarkChart  = null;
 let _perfFullData = null;
 let _activePerfPeriod = '12m';
+let _activeBenchmark  = '';   // ticker, or '' for none
+let _benchmarkCache   = {};   // ticker -> { dates, prices, name }
+let _benchmarkSeq     = 0;    // discards stale fetches when the selection changes fast
+
+const BENCHMARK_LABELS = {
+  '^GSPC': 'S&P 500',
+  '^IXIC': 'NASDAQ',
+  '^RUT':  'Russell 2000',
+  '^MID':  'S&P MidCap 400',
+  'SHY':   'Short-Term Treasuries (SHY)',
+};
 
 const _PERF_PERIOD_LABELS = {
   '3m':  'Past 3 Months',
@@ -50,7 +62,7 @@ async function loadPerformance() {
   loading.textContent   = 'Fetching 12 months of price history — this may take a moment…';
   loading.style.display = 'block';
 
-  ['summaryCards','perfPeriodRow','chartCard','categoriesChartCard','holdingsChartCard','monthlyCard','untrackedNotice'].forEach(id => {
+  ['summaryCards','perfPeriodRow','chartCard','benchmarkChartCard','categoriesChartCard','holdingsChartCard','monthlyCard','untrackedNotice'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -108,6 +120,7 @@ function setPerfPeriod(period) {
   renderCategoriesChart(sliced.dates, sliced.categories_series || []);
   renderHoldingsChart(sliced.dates, sliced.holdings_series || []);
   renderMonthly(_filterMonthly(_perfFullData.monthly, sliced.dates));
+  renderBenchmarkChart(sliced.dates, sliced.values);
 }
 
 function _updatePerfPeriodBtns() {
@@ -606,6 +619,211 @@ function renderMonthly(monthly) {
   }).join('');
 
   document.getElementById('monthlyCard').style.display = '';
+}
+
+// ── Benchmark comparison ──────────────────────────────────────────────────────
+
+function setBenchmark(ticker) {
+  _activeBenchmark = ticker;
+  const sliced = _slicePerfData(_perfFullData, _activePerfPeriod);
+  renderBenchmarkChart(sliced.dates, sliced.values);
+}
+
+async function _fetchBenchmark(ticker) {
+  const statusEl = document.getElementById('benchmarkStatus');
+  const seq = ++_benchmarkSeq;
+  statusEl.textContent = `Fetching ${BENCHMARK_LABELS[ticker] || ticker}…`;
+
+  try {
+    const res  = await fetch(`/api/lookup/${encodeURIComponent(ticker)}`);
+    const data = await res.json();
+    if (seq !== _benchmarkSeq) return;  // a newer selection has since taken over
+
+    if (!res.ok) {
+      statusEl.textContent = data.error || `Failed to load ${ticker}.`;
+      return;
+    }
+    _benchmarkCache[ticker] = { dates: data.dates, prices: data.prices };
+    statusEl.textContent = '';
+    if (_activeBenchmark === ticker) {
+      const sliced = _slicePerfData(_perfFullData, _activePerfPeriod);
+      renderBenchmarkChart(sliced.dates, sliced.values);
+    }
+  } catch (err) {
+    if (seq !== _benchmarkSeq) return;
+    statusEl.textContent = `Request failed: ${err.message}`;
+  }
+}
+
+// Benchmark prices only exist for trading days; carry the last known close
+// forward onto the portfolio's calendar-day dates (weekends/holidays) so the
+// two series line up point-for-point.
+function _alignBenchmark(portfolioDates, benchDates, benchPrices) {
+  const priceByDate = {};
+  benchDates.forEach((d, i) => { priceByDate[d] = benchPrices[i]; });
+
+  const aligned = [];
+  let last = null;
+  for (const d of portfolioDates) {
+    if (priceByDate[d] != null) last = priceByDate[d];
+    aligned.push(last);
+  }
+  // Back-fill any leading gap (portfolio history starts before the benchmark's
+  // earliest trading day) with the first price we do have.
+  const firstKnown = aligned.find(v => v != null);
+  return aligned.map(v => (v == null ? firstKnown : v));
+}
+
+function renderBenchmarkChart(dates, values) {
+  const card     = document.getElementById('benchmarkChartCard');
+  const statusEl = document.getElementById('benchmarkStatus');
+
+  if (!_activeBenchmark) {
+    card.style.display = 'none';
+    if (benchmarkChart) { benchmarkChart.destroy(); benchmarkChart = null; }
+    return;
+  }
+
+  card.style.display = '';
+
+  const cached = _benchmarkCache[_activeBenchmark];
+  if (!cached) {
+    if (benchmarkChart) { benchmarkChart.destroy(); benchmarkChart = null; }
+    _fetchBenchmark(_activeBenchmark);
+    return;
+  }
+
+  if (!dates.length || !values.length || cached.dates == null || !cached.dates.length) {
+    statusEl.textContent = 'No overlapping price history to compare.';
+    if (benchmarkChart) { benchmarkChart.destroy(); benchmarkChart = null; }
+    return;
+  }
+
+  const alignedBench = _alignBenchmark(dates, cached.dates, cached.prices);
+  const portfolioBase = values[0];
+  const benchBase     = alignedBench[0];
+
+  const portfolioPct = values.map(v => portfolioBase ? +((v - portfolioBase) / portfolioBase * 100).toFixed(4) : 0);
+  const benchPct     = alignedBench.map(v => benchBase ? +((v - benchBase) / benchBase * 100).toFixed(4) : 0);
+
+  const label = BENCHMARK_LABELS[_activeBenchmark] || _activeBenchmark;
+  const titleLabel = _activePerfPeriod === 'ytd'
+    ? `Portfolio vs ${label} — YTD % Change`
+    : `Portfolio vs ${label} — ${_PERF_PERIOD_LABELS[_activePerfPeriod]} % Change`;
+  document.getElementById('benchmarkChartTitle').textContent = titleLabel;
+
+  const monthStarts = new Set();
+  const seenMonths  = new Set();
+  for (const d of dates) {
+    const ym = d.slice(0, 7);
+    if (!seenMonths.has(ym)) { seenMonths.add(ym); monthStarts.add(d); }
+  }
+
+  const monthGridPlugin = {
+    id: 'benchmarkMonthGrid',
+    afterDraw(chart) {
+      const xScale = chart.scales.x;
+      const { top, bottom } = chart.chartArea;
+      const c = chart.ctx;
+      c.save();
+      c.strokeStyle = 'rgba(100,116,139,0.35)';
+      c.lineWidth   = 1;
+      for (const d of monthStarts) {
+        const idx = dates.indexOf(d);
+        if (idx === -1) continue;
+        const x = xScale.getPixelForValue(idx);
+        c.beginPath(); c.moveTo(x, top); c.lineTo(x, bottom); c.stroke();
+      }
+      c.restore();
+    },
+  };
+
+  if (benchmarkChart) benchmarkChart.destroy();
+
+  benchmarkChart = new Chart(document.getElementById('benchmarkChart').getContext('2d'), {
+    type:    'line',
+    plugins: [monthGridPlugin],
+    data: {
+      labels: dates,
+      datasets: [
+        {
+          label:            'Portfolio',
+          data:             portfolioPct,
+          borderColor:      '#2563eb',
+          borderWidth:      2,
+          backgroundColor:  'transparent',
+          fill:             false,
+          pointRadius:      0,
+          pointHoverRadius: 4,
+          tension:          0.3,
+        },
+        {
+          label:            label,
+          data:             benchPct,
+          borderColor:      '#94a3b8',
+          borderWidth:      2,
+          borderDash:       [4, 3],
+          backgroundColor:  'transparent',
+          fill:             false,
+          pointRadius:      0,
+          pointHoverRadius: 4,
+          tension:          0.3,
+        },
+      ],
+    },
+    options: {
+      responsive:          true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            generateLabels(chart) {
+              return chart.data.datasets.map((ds, i) => {
+                const last = ds.data[ds.data.length - 1];
+                const sign = last >= 0 ? '+' : '';
+                return {
+                  text:        `${ds.label} (${sign}${last.toFixed(2)}%)`,
+                  fillStyle:   ds.borderColor,
+                  strokeStyle: ds.borderColor,
+                  lineWidth:   0,
+                  hidden:      !chart.getDatasetMeta(i).visible,
+                  datasetIndex: i,
+                };
+              });
+            },
+          },
+        },
+        tooltip: {
+          callbacks: {
+            title:      ctx => ctx[0].label,
+            label:      ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(2)}%`,
+            labelColor: ctx => ({ borderColor: ctx.dataset.borderColor, backgroundColor: ctx.dataset.borderColor }),
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'category',
+          ticks: {
+            autoSkip: false, maxRotation: 0,
+            callback(val) {
+              const d = this.getLabelForValue(val);
+              if (!d || !monthStarts.has(d)) return null;
+              return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+            },
+          },
+          grid: { display: false },
+        },
+        y: {
+          ticks: { callback: v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%' },
+          grid:  { color: '#f1f5f9' },
+        },
+      },
+    },
+  });
 }
 
 // ── Select / unselect all datasets ───────────────────────────────────────────

@@ -15,7 +15,19 @@
 <div id="loadingMsg" class="alert" style="display:none"></div>
 
 <!-- Period selector -->
-<div id="perfPeriodRow" style="display:none;justify-content:flex-end;margin-bottom:1rem">
+<div id="perfPeriodRow" style="display:none;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:0.75rem;flex-wrap:wrap">
+  <div style="display:flex;align-items:center;gap:0.5rem">
+    <label for="benchmarkSelect" class="text-muted" style="font-size:0.8rem">Compare to:</label>
+    <select id="benchmarkSelect" onchange="setBenchmark(this.value)"
+      style="padding:0.3rem 0.5rem;border:1px solid var(--border);border-radius:4px;font-size:0.8rem">
+      <option value="">None</option>
+      <option value="^GSPC">S&amp;P 500</option>
+      <option value="^IXIC">NASDAQ</option>
+      <option value="^RUT">Russell 2000 (Small Cap)</option>
+      <option value="^MID">S&amp;P MidCap 400</option>
+      <option value="SHY">Short-Term Treasuries (SHY)</option>
+    </select>
+  </div>
   <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;font-size:0.8rem">
     <button id="perfBtn3M"  onclick="setPerfPeriod('3m')"  style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent;border-right:1px solid var(--border)">3M</button>
     <button id="perfBtn6M"  onclick="setPerfPeriod('6m')"  style="border:none;padding:0.25rem 0.7rem;cursor:pointer;background:transparent;border-right:1px solid var(--border)">6M</button>
@@ -50,6 +62,15 @@
   <h2 id="perfChartTitle" style="font-size:1rem;font-weight:600;margin-bottom:1rem">Portfolio Value — Past 12 Months</h2>
   <div style="position:relative;height:320px">
     <canvas id="performanceChart"></canvas>
+  </div>
+</div>
+
+<!-- Benchmark comparison chart -->
+<div class="card" id="benchmarkChartCard" style="display:none;padding:1.5rem;margin-bottom:1.5rem">
+  <h2 id="benchmarkChartTitle" style="font-size:1rem;font-weight:600;margin-bottom:0.25rem">Portfolio vs Benchmark — % Change</h2>
+  <div id="benchmarkStatus" class="text-muted" style="font-size:0.8rem;margin-bottom:0.75rem"></div>
+  <div style="position:relative;height:320px">
+    <canvas id="benchmarkChart"></canvas>
   </div>
 </div>
 

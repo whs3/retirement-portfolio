@@ -421,6 +421,11 @@ body {
 
 .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
 .alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+.alert-warning { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+
+.drift-alerts       { margin-bottom: 1.5rem; }
+.drift-alert-item   { margin: 0; padding: 0.25rem 0; }
+.drift-alert-item + .drift-alert-item { border-top: 1px solid #fde68a; }
 
 /* ── Sortable table headers ──────────────────────────────────────────────── */
 .th-sortable {

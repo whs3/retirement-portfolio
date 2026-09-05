@@ -107,13 +107,13 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 **Page summaries**
 | Page | Template | JS | Description |
 |------|----------|----|-------------|
-| Dashboard | `dashboard.html` | `dashboard.js` | By Owner + By Account Type doughnut charts + portfolio totals; category allocation table sorted by value; auto-refresh widget (minutes, 0 = off) |
+| Dashboard | `dashboard.html` | `dashboard.js` | By Owner + By Account Type doughnut charts + portfolio totals; category allocation table sorted by value; auto-refresh widget (minutes, 0 = off); drift alert banner when a category is 5+ points off its rebalance target |
 | Holdings | `holdings.html` | `holdings.js` | CRUD table for all holdings; Owner and Account Type filter dropdowns; search summary shows totals row; inline price refresh; Import CSV button (app's own export format, all-or-nothing); supports sell transactions via negative shares/cost_basis/current_value; Ticker Symbol is first field with auto-focus and auto-fetch on input (600 ms debounce); shares support up to 6 decimal places; second item in nav bar |
 | Rebalance | `rebalance.html` | `rebalance.js` | Buy/Sell/Hold recommendations vs target allocations; zero-target categories filtered from chart and table |
 | Audit | `audit.html` | `audit.js` | Audit log with search/filter |
 | Lookup | `lookup.html` | `lookup.js` | Price history chart for any ticker; auto-loads ^GSPC, ^IXIC, ^MID (mid cap), ^RUT (small cap), SHY (short Treasuries) on open; analyst recommendations for stocks; fund info + tracked index for ETFs/funds; 1M/3M/6M/YTD/12M period selector on both charts |
 | Overlap | `overlap.html` | `overlap.js` | ETF holdings overlap — doughnut chart + full table |
-| Performance | `performance.html` | `performance.js` | Portfolio value over time with 3M/6M/YTD/12M period selector; stacked category breakdown chart; individual holdings % change chart; monthly gain/loss table |
+| Performance | `performance.html` | `performance.js` | Portfolio value over time with 3M/6M/YTD/12M period selector; optional benchmark comparison chart (S&P 500/NASDAQ/Russell 2000/S&P MidCap 400/SHY) vs. portfolio % change; stacked category breakdown chart; individual holdings % change chart; monthly gain/loss table |
 
 **Asset types** (stored as-is in the DB): `stock`, `bond`, `etf`, `mutual_fund`.
 
@@ -136,6 +136,8 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 - `services.price_scheduler.start_price_refresh_scheduler()` — daemon thread; interval from `price_refresh_minutes` (0 = off).
 - `services.snapshots.capture_snapshot()` / `backfill_if_empty()` / `get_performance_history()` — daily portfolio value snapshots backing the Performance page (see above).
 
+**Dashboard drift alerts**: `dashboard.js` fetches the existing `/api/rebalance` endpoint (no new backend code) and shows a banner for any category where `|current_pct - target_pct| >= 5` percentage points, sorted by largest drift first. Zero-target categories are excluded, matching the Rebalance page's own filtering convention. The banner is hidden entirely when nothing crosses the threshold.
+
 **Lookup page details**
 - Market Indices section auto-loads S&P 500 (`^GSPC`), NASDAQ (`^IXIC`), S&P MidCap 400 (`^MID`), Russell 2000 small cap (`^RUT`), and short-term Treasuries (`SHY`) on page open; normalized % change chart with 1M/3M/6M/YTD/12M period buttons.
 - Ticker lookup supports portfolio dropdown or free-text entry; uses `_lookupSeq` counter to discard stale async responses.
@@ -148,3 +150,4 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 - Category breakdown: stacked area chart grouped by Morningstar category or sector; categories fetched in parallel via `ThreadPoolExecutor` and cached in `_category_cache`.
 - Individual holdings chart: normalized % change from period start so holdings of different sizes are directly comparable; Select All / Unselect All buttons; solid filled legend boxes and tooltip swatches.
 - Category chart: Select All / Unselect All buttons; y-axis starts at zero for accurate proportional display.
+- Benchmark comparison chart (opt-in via a dropdown, default "None"): reuses `/api/lookup/<ticker>` (the same endpoint the Lookup page's market indices use) client-side — no backend changes. Benchmark prices only exist for trading days, so they're forward-filled onto the portfolio's snapshot dates before both series are normalized to % change from the period start and plotted together. Cached per ticker in `_benchmarkCache` for the page session; re-normalizes (no refetch) on period change.

@@ -95,6 +95,40 @@ async function loadSummary() {
   }
 }
 
+const DRIFT_THRESHOLD_PTS = 5;
+
+async function loadDriftAlerts() {
+  const box  = document.getElementById('driftAlerts');
+  const list = document.getElementById('driftAlertsList');
+  try {
+    const data = await apiFetch('/api/rebalance');
+    const drifted = (data.recommendations || [])
+      .filter(r => r.target_pct > 0 && Math.abs(r.current_pct - r.target_pct) >= DRIFT_THRESHOLD_PTS)
+      .sort((a, b) => Math.abs(b.current_pct - b.target_pct) - Math.abs(a.current_pct - a.target_pct));
+
+    if (!drifted.length) {
+      box.style.display = 'none';
+      return;
+    }
+
+    list.innerHTML = drifted.map(r => {
+      const diff       = r.current_pct - r.target_pct;
+      const isOver     = diff > 0;
+      const direction  = isOver ? 'over' : 'under';
+      const suggestion = isOver ? 'selling' : 'buying';
+      return `<p class="drift-alert-item">
+        <strong>${esc(r.category)}</strong> is ${Math.abs(diff).toFixed(1)} pts ${direction} target
+        (${r.current_pct.toFixed(1)}% vs ${r.target_pct.toFixed(1)}% target) — consider ${suggestion}.
+      </p>`;
+    }).join('');
+    box.style.display = 'block';
+  } catch (err) {
+    // Non-fatal: leave the banner hidden rather than surface a second error box.
+    box.style.display = 'none';
+    console.error('loadDriftAlerts failed:', err);
+  }
+}
+
 function renderAllocationChart(allocation) {
   const canvas = document.getElementById('allocationChart');
   const ctx    = canvas.getContext('2d');
@@ -472,6 +506,7 @@ async function refreshPrices(opts = {}) {
     updateTimestamp(lastRefreshAt);
     loadSummary();
     loadHoldings();
+    loadDriftAlerts();
   } catch (err) {
     if (status) {
       status.textContent   = `Request failed: ${err.message}`;
@@ -636,4 +671,5 @@ document.addEventListener('DOMContentLoaded', () => {
   loadRefreshSetting();
   loadSummary();
   loadHoldings();
+  loadDriftAlerts();
 });

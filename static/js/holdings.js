@@ -13,6 +13,7 @@ let editingId    = null;
 let fetchedPrice = null;  // cached price from last "Fetch" call
 let sortCol      = 'purchase_date';
 let sortDir      = -1;  // 1 = asc, -1 = desc
+let lastQuantityField = 'shares';  // 'shares' or 'costBasis' — which one to (re)derive the other from
 
 function fmt(n) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -176,8 +177,10 @@ function renderTable() {
 
 function openModal(id = null) {
   editingId = id;
+  lastQuantityField = 'shares';
   const title     = document.getElementById('modalTitle');
   const submitBtn = document.getElementById('submitBtn');
+  document.getElementById('costBasisHint').style.display = id === null ? '' : 'none';
 
   if (id !== null) {
     const h = holdings.find(x => x.id === id);
@@ -416,7 +419,7 @@ async function fetchPrice() {
     if (data.category && !document.getElementById('category').value.trim()) {
       document.getElementById('category').value = data.category;
     }
-    recalcCurrentValue();
+    if (lastQuantityField === 'costBasis') recalcSharesFromCost(); else recalcCurrentValue();
   } catch (err) {
     display.textContent = `Request failed: ${err.message}`;
     fetchedPrice = null;
@@ -437,17 +440,44 @@ function recalcCurrentValue() {
   if (editingId === null) document.getElementById('costBasis').value = cv;
 }
 
+// Inverse of recalcCurrentValue: given a target cost basis, back into the
+// share count a live price implies. Add-mode only — editing an existing lot
+// should not silently rewrite its share count from a cost-basis tweak.
+function recalcSharesFromCost() {
+  if (editingId !== null) return;
+  const ticker = document.getElementById('ticker').value.toUpperCase();
+  const cost   = parseFloat(document.getElementById('costBasis').value);
+  if (!Number.isFinite(cost)) return;
+
+  if (ticker === '$$CASH') {
+    document.getElementById('shares').value       = cost.toFixed(2);
+    document.getElementById('currentValue').value = cost.toFixed(2);
+    return;
+  }
+  if (!fetchedPrice) return;
+  const shares = cost / fetchedPrice;
+  document.getElementById('shares').value       = parseFloat(shares.toFixed(6));
+  document.getElementById('currentValue').value = cost.toFixed(2);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadHoldings();
   document.getElementById('holdingsSearch').addEventListener('input', renderTable);
-  document.getElementById('shares').addEventListener('input', recalcCurrentValue);
+  document.getElementById('shares').addEventListener('input', () => {
+    lastQuantityField = 'shares';
+    recalcCurrentValue();
+  });
+  document.getElementById('costBasis').addEventListener('input', () => {
+    lastQuantityField = 'costBasis';
+    recalcSharesFromCost();
+  });
 
   let fetchTimer = null;
   document.getElementById('ticker').addEventListener('input', () => {
     const val = document.getElementById('ticker').value.toUpperCase();
     if (val === '$$CASH') {
       document.getElementById('assetType').value = 'cash';
-      recalcCurrentValue();
+      if (lastQuantityField === 'costBasis') recalcSharesFromCost(); else recalcCurrentValue();
       return;
     }
     clearTimeout(fetchTimer);

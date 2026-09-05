@@ -91,6 +91,58 @@ def test_put_price_refresh_minutes_rejected(client):
     assert "exceed" in r.get_json()["error"]
 
 
+def test_put_and_get_birthdate(client):
+    r = client.put("/api/settings", json={"birthdate_bill": "1960-05-15"})
+    assert r.status_code == 200
+    got = client.get("/api/settings").get_json()
+    assert got["birthdate_bill"] == "1960-05-15"
+
+
+def test_put_birthdate_clears_with_empty_string(client):
+    client.put("/api/settings", json={"birthdate_bill": "1960-05-15"})
+    r = client.put("/api/settings", json={"birthdate_bill": ""})
+    assert r.status_code == 200
+    got = client.get("/api/settings").get_json()
+    assert got["birthdate_bill"] == ""
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["not-a-date", "2026-13-40", "05/15/1960", "2099-01-01", "1899-01-01", 12345],
+)
+def test_put_birthdate_rejected(client, raw):
+    r = client.put("/api/settings", json={"birthdate_bill": raw})
+    assert r.status_code == 400
+
+
+@pytest.mark.parametrize("key", ["withdrawal_rate", "withdrawal_return_rate", "withdrawal_inflation_rate"])
+def test_put_withdrawal_rate_valid(client, key):
+    r = client.put("/api/settings", json={key: 4.5})
+    assert r.status_code == 200
+    got = client.get("/api/settings").get_json()
+    assert got[key] == "4.5"
+
+
+@pytest.mark.parametrize("key", ["withdrawal_rate", "withdrawal_return_rate", "withdrawal_inflation_rate"])
+@pytest.mark.parametrize("raw", [-1, 51, "abc", float("nan")])
+def test_put_withdrawal_rate_rejected(client, key, raw):
+    r = client.put("/api/settings", json={key: raw})
+    assert r.status_code == 400
+
+
+def test_put_withdrawal_years_valid(client):
+    r = client.put("/api/settings", json={"withdrawal_years": 30})
+    assert r.status_code == 200
+    got = client.get("/api/settings").get_json()
+    assert got["withdrawal_years"] == "30"
+
+
+@pytest.mark.parametrize("raw", [0, -5, 61, 30.5, "abc"])
+def test_put_withdrawal_years_rejected(client, raw):
+    r = client.put("/api/settings", json={"withdrawal_years": raw})
+    assert r.status_code == 400
+
+
 def test_scheduler_not_started_in_testing(app):
     assert app.extensions.get("price_refresh_thread") is None
 

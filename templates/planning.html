@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Planning — Retirement Portfolio{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Retirement Planning</h1>
+</div>
+
+<p class="text-muted" style="margin-bottom:1.5rem">
+  Estimates only, not tax or financial advice — both tools below use simple, deterministic models.
+</p>
+
+<!-- Withdrawal projection -->
+<div class="card">
+  <h2 class="card-title">Safe Withdrawal Rate Projection</h2>
+  <p class="card-description">
+    Assumes a fixed % of your current total portfolio value is withdrawn in year one, and that
+    withdrawal grows with inflation every year after (the classic "4% rule" methodology) — not
+    Monte Carlo, not tax-adjusted.
+  </p>
+
+  <div class="form-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="form-group">
+      <label for="wdRate">Annual Withdrawal Rate (%)</label>
+      <input type="number" id="wdRate" min="0" max="50" step="0.1">
+    </div>
+    <div class="form-group">
+      <label for="wdReturn">Expected Annual Return (%)</label>
+      <input type="number" id="wdReturn" min="0" max="50" step="0.1">
+    </div>
+    <div class="form-group">
+      <label for="wdInflation">Inflation Rate (%)</label>
+      <input type="number" id="wdInflation" min="0" max="50" step="0.1">
+    </div>
+    <div class="form-group">
+      <label for="wdYears">Projection Years</label>
+      <input type="number" id="wdYears" min="1" max="60" step="1">
+    </div>
+  </div>
+
+  <div id="wdStatus" class="text-muted" style="font-size:0.85rem;margin-bottom:0.5rem"></div>
+  <div id="wdSummary" style="display:none;margin-bottom:1rem"></div>
+
+  <div id="wdChartWrap" style="display:none;position:relative;height:320px;margin-bottom:1rem">
+    <canvas id="wdChart"></canvas>
+  </div>
+
+  <details id="wdTableWrap" style="display:none">
+    <summary style="cursor:pointer;font-size:0.875rem;color:var(--text-muted);margin-bottom:0.5rem">Year-by-year detail</summary>
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Year</th>
+            <th class="text-right">Start Balance</th>
+            <th class="text-right">Withdrawal</th>
+            <th class="text-right">End Balance</th>
+          </tr>
+        </thead>
+        <tbody id="wdTableBody"></tbody>
+      </table>
+    </div>
+  </details>
+</div>
+
+<!-- RMD tracking -->
+<div class="card">
+  <h2 class="card-title">Required Minimum Distributions (RMD)</h2>
+  <p class="card-description">
+    Uses the IRS Uniform Lifetime Table and your current account balances as a stand-in for the
+    prior-year-end balance the IRS calculation actually requires. Only 401k, 403b, IRA, and
+    Rollover IRA balances count — Roth accounts and taxable accounts are excluded. Does not apply
+    if a spouse is the sole beneficiary and more than 10 years younger (Joint Life table instead).
+  </p>
+
+  <div class="form-grid" style="grid-template-columns:repeat(2,1fr)">
+    <div class="form-group">
+      <label for="birthdateBill">Bill's Birthdate</label>
+      <input type="date" id="birthdateBill">
+    </div>
+    <div class="form-group">
+      <label for="birthdateAkiko">Akiko's Birthdate</label>
+      <input type="date" id="birthdateAkiko">
+    </div>
+  </div>
+  <div id="rmdSaveStatus" class="text-muted" style="font-size:0.8rem;margin-bottom:1rem"></div>
+
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Owner</th>
+          <th class="text-right">Age</th>
+          <th class="text-right">RMD Start Age</th>
+          <th>Status</th>
+          <th class="text-right">Tax-Deferred Balance</th>
+          <th class="text-right">Distribution Period</th>
+          <th class="text-right">Estimated RMD This Year</th>
+        </tr>
+      </thead>
+      <tbody id="rmdBody">
+        <tr><td colspan="7" class="text-center text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/planning.js') }}"></script>
+{% endblock %}

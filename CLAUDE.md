@@ -97,10 +97,12 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 | GET | `/api/lookup/<ticker>` | 12-month price history + metadata, analyst data, fund info, benchmark |
 | GET | `/api/overlap` | ETF/fund holdings overlap analysis across portfolio |
 | GET | `/api/performance` | Daily portfolio value history + per-holding series + per-category series |
+| GET | `/api/withdrawal` | Safe-withdrawal-rate projection; optional `rate`/`return_rate`/`inflation_rate`/`years` query params override persisted settings |
+| GET | `/api/rmd` | Required Minimum Distribution estimate per owner (Bill/Akiko) |
 
 **Frontend**
 - `templates/base.html` — shared nav, Chart.js CDN import, CSRF meta tag, server-timezone meta tag, global fetch interceptor.
-- One template + one JS file per page: `dashboard`, `holdings`, `rebalance`, `audit`, `lookup`, `overlap`, `performance`.
+- One template + one JS file per page: `dashboard`, `holdings`, `rebalance`, `audit`, `lookup`, `overlap`, `performance`, `insights`, `planning`.
 - No framework; fetch API calls the JSON endpoints above.
 - Chart.js (loaded from jsDelivr CDN) renders charts throughout the app.
 
@@ -114,6 +116,7 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 | Lookup | `lookup.html` | `lookup.js` | Price history chart for any ticker; auto-loads ^GSPC, ^IXIC, ^MID (mid cap), ^RUT (small cap), SHY (short Treasuries) on open; analyst recommendations for stocks; fund info + tracked index for ETFs/funds; 1M/3M/6M/YTD/12M period selector on both charts |
 | Overlap | `overlap.html` | `overlap.js` | ETF holdings overlap — doughnut chart + full table |
 | Performance | `performance.html` | `performance.js` | Portfolio value over time with 3M/6M/YTD/12M period selector; optional benchmark comparison chart (S&P 500/NASDAQ/Russell 2000/S&P MidCap 400/SHY) vs. portfolio % change; stacked category breakdown chart; individual holdings % change chart; monthly gain/loss table |
+| Planning | `planning.html` | `planning.js` | Safe-withdrawal-rate projection calculator (rate/return/inflation/years, persisted via Settings) with balance-over-time chart and year-by-year table; RMD tracking table per owner (Bill/Akiko) with birthdate inputs |
 
 **Asset types** (stored as-is in the DB): `stock`, `bond`, `etf`, `mutual_fund`.
 
@@ -151,3 +154,11 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 - Individual holdings chart: normalized % change from period start so holdings of different sizes are directly comparable; Select All / Unselect All buttons; solid filled legend boxes and tooltip swatches.
 - Category chart: Select All / Unselect All buttons; y-axis starts at zero for accurate proportional display.
 - Benchmark comparison chart (opt-in via a dropdown, default "None"): reuses `/api/lookup/<ticker>` (the same endpoint the Lookup page's market indices use) client-side — no backend changes. Benchmark prices only exist for trading days, so they're forward-filled onto the portfolio's snapshot dates before both series are normalized to % change from the period start and plotted together. Cached per ticker in `_benchmarkCache` for the page session; re-normalizes (no refetch) on period change.
+
+**Planning page details** — estimates only, not tax or financial advice.
+- Withdrawal projection (`services.withdrawal.project_withdrawals()`): deterministic (no Monte Carlo) "4% rule" style model — year one's withdrawal is `rate% x current total portfolio value` (from `SUM(current_value)` across all holdings), and every subsequent year's withdrawal grows with inflation rather than being recalculated against the then-current balance. Each year, the withdrawal comes out first, then the remainder grows at the assumed return; once the balance hits zero it stays at zero for the rest of the projection. `depletion_year` is the first year (1-indexed) the balance reaches zero, or `null` if it survives the full projection window (`years`, max `MAX_YEARS` = 60).
+- Assumptions (rate/return/inflation/years) are editable inline and persisted via `/api/settings` (`withdrawal_rate`, `withdrawal_return_rate`, `withdrawal_inflation_rate`, `withdrawal_years`) so they survive a page reload; `GET /api/withdrawal` falls back to those persisted values for any query param not supplied, defaulting to 4/6/3/30 when nothing has ever been saved.
+- RMD tracking (`services.rmd.py`): IRS Uniform Lifetime Table (ages 72-120, hardcoded) is used for everyone — it does not apply if a spouse is the sole beneficiary and more than 10 years younger (Joint and Last Survivor table instead; not implemented). RMD start age follows SECURE 2.0 (72 born ≤1950, 73 born 1951-1959, 75 born 1960+).
+- Only `401k`/`403b`/`IRA`/`Rollover IRA` balances count toward an owner's RMD-subject balance (`RMD_SUBJECT_ACCOUNT_TYPES` in `services/rmd.py`); `Roth IRA` and taxable accounts (`Broker`, `Cash Management`) are excluded. The app has no field distinguishing Traditional vs. Roth 401k/403b, so any `401k`/`403b` holding is assumed Traditional.
+- Only owners `Bill` and `Akiko` are tracked (matches the fixed owner dropdown elsewhere in the app); `Joint`-owned holdings are excluded since RMDs apply to an individual, not a joint account. Birthdates are stored as `birthdate_bill` / `birthdate_akiko` settings (`YYYY-MM-DD`); an owner with no birthdate set shows balance only, prompting for one before any RMD figure appears.
+- The account's *current* value stands in for the prior-year-end balance the IRS calculation actually requires — a simplification, not exact tax preparation.

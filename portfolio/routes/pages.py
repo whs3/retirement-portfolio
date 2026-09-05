@@ -43,3 +43,8 @@ def performance_page():
 @bp.route("/lookup")
 def lookup_page():
     return render_template("lookup.html")
+
+
+@bp.route("/planning")
+def planning_page():
+    return render_template("planning.html")

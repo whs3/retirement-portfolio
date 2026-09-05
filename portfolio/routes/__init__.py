@@ -10,7 +10,9 @@ from portfolio.routes.pages import bp as pages_bp
 from portfolio.routes.performance import bp as performance_bp
 from portfolio.routes.portfolio import bp as portfolio_bp
 from portfolio.routes.prices import bp as prices_bp
+from portfolio.routes.rmd import bp as rmd_bp
 from portfolio.routes.settings import bp as settings_bp
+from portfolio.routes.withdrawal import bp as withdrawal_bp
 
 
 def register_blueprints(app):
@@ -25,3 +27,5 @@ def register_blueprints(app):
     app.register_blueprint(performance_bp)
     app.register_blueprint(lookup_bp)
     app.register_blueprint(export_bp)
+    app.register_blueprint(rmd_bp)
+    app.register_blueprint(withdrawal_bp)

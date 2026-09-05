@@ -17,6 +17,7 @@ The backend is organized as a `portfolio` Python package with an app factory, bl
 | **Overlap** | Break ETFs/funds into underlying stocks and show concentration across the whole portfolio |
 | **Rebalance** | Category target allocations with Buy / Sell / Hold recommendations |
 | **Insights** | Analyst consensus, sentiment mix, expense/valuation signals, and high-level recommendations |
+| **Planning** | Safe-withdrawal-rate projection (rate/return/inflation/years, persisted) with a balance-over-time chart; RMD tracking per owner using the IRS Uniform Lifetime Table — estimates only, not tax advice |
 | **Audit Log** | Searchable history of adds, edits, deletes, and price updates |
 | **CSV Export** | Download all holdings as a spreadsheet |
 
@@ -196,6 +197,8 @@ All JSON APIs are same-origin. Mutating requests need a CSRF token (`X-CSRFToken
 | GET/PUT | `/api/settings` | App settings (API keys masked on GET; `price_refresh_minutes`) |
 | GET | `/api/audit` | Parsed audit log entries |
 | GET | `/api/export/csv` | CSV download |
+| GET | `/api/withdrawal` | Safe-withdrawal-rate projection |
+| GET | `/api/rmd` | RMD estimate per owner |
 
 ---
 

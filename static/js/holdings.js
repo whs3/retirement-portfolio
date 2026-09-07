@@ -14,6 +14,7 @@ let fetchedPrice = null;  // cached price from last "Fetch" call
 let sortCol      = 'purchase_date';
 let sortDir      = -1;  // 1 = asc, -1 = desc
 let lastQuantityField = 'shares';  // 'shares' or 'costBasis' — which one to (re)derive the other from
+let tickerFilter = '';  // exact ticker to restrict the table to, set by clicking a ticker in the summary
 
 function fmt(n) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -55,15 +56,27 @@ function getFilteredHoldings() {
     pps:     h.shares !== 0 ? h.current_value / h.shares : 0,
   }));
 
-  return (query || ownerFilter || accountFilter)
+  return (query || ownerFilter || accountFilter || tickerFilter)
     ? rows.filter(h =>
         (!query || (h.name ?? '').toLowerCase().includes(query) ||
                    (h.ticker ?? '').toLowerCase().includes(query) ||
                    (h.purchase_date ?? '').toLowerCase().includes(query)) &&
         (!ownerFilter   || h.owner === ownerFilter) &&
-        (!accountFilter || h.account_type === accountFilter)
+        (!accountFilter || h.account_type === accountFilter) &&
+        (!tickerFilter  || h.ticker === tickerFilter)
       )
     : rows;
+}
+
+function filterByTicker(ticker) {
+  tickerFilter = ticker;
+  renderTable();
+  document.getElementById('holdingsBody').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function clearTickerFilter() {
+  tickerFilter = '';
+  renderTable();
 }
 
 function renderTable() {
@@ -73,6 +86,19 @@ function renderTable() {
     tbody.innerHTML = `<tr><td colspan="13" class="text-center text-muted" style="padding:2rem">
       No holdings yet. Click "Add Holding" to get started.</td></tr>`;
     return;
+  }
+
+  const badge = document.getElementById('tickerFilterBadge');
+  if (tickerFilter) {
+    badge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.25rem 0.6rem;
+        background:var(--primary,#2563eb);color:#fff;border-radius:999px;font-size:0.8rem">
+        Filtering by <strong>${esc(tickerFilter)}</strong>
+        <a href="#" onclick="clearTickerFilter(); return false;" style="color:#fff;text-decoration:none;font-weight:700">&times;</a>
+      </span>`;
+    badge.style.display = 'block';
+  } else {
+    badge.style.display = 'none';
+    badge.innerHTML = '';
   }
 
   const filtered = getFilteredHoldings();
@@ -111,8 +137,13 @@ function renderTable() {
         const sellButton = (ticker !== '—' && ticker !== '$$CASH')
           ? `<button class="btn btn-sm btn-warning" onclick="sellAllTicker('${esc(ticker)}')">Sell All</button>`
           : '';
+        const tickerCell = ticker !== '—'
+          ? `<a href="#" onclick="filterByTicker('${esc(ticker)}'); return false;"
+               title="Filter the table below to just ${esc(ticker)}"
+               style="color:var(--primary,#2563eb);text-decoration:none">${esc(ticker)}</a>`
+          : esc(ticker);
         return `<tr>
-          <td style="padding:0.2rem 1.5rem 0.2rem 0"><strong>${esc(ticker)}</strong></td>
+          <td style="padding:0.2rem 1.5rem 0.2rem 0"><strong>${tickerCell}</strong></td>
           <td style="padding:0.2rem 1.5rem 0.2rem 0;text-align:right">${sharesStr}</td>
           <td style="padding:0.2rem 1.5rem 0.2rem 0;text-align:right">${fmt(s.current_value)}</td>
           <td style="padding:0.2rem 0">${sellButton}</td>

@@ -103,6 +103,29 @@
       </tbody>
     </table>
   </div>
+
+  <details id="rmdProjectionWrap" style="display:none;margin-top:1rem">
+    <summary style="cursor:pointer;font-size:0.875rem;color:var(--text-muted);margin-bottom:0.5rem">
+      Future RMD projection
+    </summary>
+    <p id="rmdProjectionNote" class="text-muted" style="font-size:0.8rem;margin-bottom:0.5rem"></p>
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Year</th>
+            <th class="text-right">Bill's Age</th>
+            <th class="text-right">Bill's Est. RMD</th>
+            <th class="text-right">Akiko's Age</th>
+            <th class="text-right">Akiko's Est. RMD</th>
+            <th class="text-right">Combined RMD</th>
+          </tr>
+        </thead>
+        <tbody id="rmdProjectionBody"></tbody>
+      </table>
+    </div>
+  </details>
+  </div>
 </div>
 {% endblock %}
 

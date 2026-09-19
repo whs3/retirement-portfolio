@@ -201,9 +201,50 @@ async function loadRmd() {
         <td class="text-right">${o.distribution_period != null ? o.distribution_period : '—'}</td>
         <td class="text-right">${o.rmd_amount ? fmt(o.rmd_amount) : '—'}</td>
       </tr>`).join('');
+
+    renderRmdProjection(owners, data.projection_assumptions);
   } catch (err) {
     body.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Failed to load: ${esc(err.message)}</td></tr>`;
   }
+}
+
+function renderRmdProjection(owners, assumptions) {
+  const wrap = document.getElementById('rmdProjectionWrap');
+  const note = document.getElementById('rmdProjectionNote');
+  const body = document.getElementById('rmdProjectionBody');
+
+  const bill  = owners['Bill']?.projection  || [];
+  const akiko = owners['Akiko']?.projection || [];
+  const rowCount = Math.max(bill.length, akiko.length);
+
+  if (rowCount === 0) {
+    wrap.style.display = 'none';
+    return;
+  }
+
+  note.textContent =
+    `Projected using the ${assumptions.return_rate_pct}% expected annual return and ` +
+    `${assumptions.years}-year horizon set in the withdrawal calculator above; balances shown ` +
+    `are reduced by each year's RMD and then grown at that rate.`;
+
+  const rows = [];
+  for (let i = 0; i < rowCount; i++) {
+    const b = bill[i];
+    const a = akiko[i];
+    const calendarYear = (b || a).calendar_year;
+    const combined = (b?.rmd_amount || 0) + (a?.rmd_amount || 0);
+    rows.push(`
+      <tr>
+        <td>${calendarYear}</td>
+        <td class="text-right">${b ? b.age : '—'}</td>
+        <td class="text-right">${b?.rmd_amount ? fmt(b.rmd_amount) : '—'}</td>
+        <td class="text-right">${a ? a.age : '—'}</td>
+        <td class="text-right">${a?.rmd_amount ? fmt(a.rmd_amount) : '—'}</td>
+        <td class="text-right">${combined ? fmt(combined) : '—'}</td>
+      </tr>`);
+  }
+  body.innerHTML = rows.join('');
+  wrap.style.display = '';
 }
 
 let rmdSaveTimer = null;

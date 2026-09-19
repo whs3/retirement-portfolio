@@ -74,3 +74,36 @@ def calculate_rmd(birthdate: date, balance: float, as_of: date | None = None) ->
         "balance": round(balance, 2),
         "rmd_amount": rmd_amount,
     }
+
+
+def project_rmds(
+    birthdate: date,
+    balance: float,
+    return_rate_pct: float,
+    years: int,
+    as_of: date | None = None,
+) -> list[dict]:
+    """Year-by-year forward RMD projection for one owner.
+
+    Deterministic, same style as the withdrawal projector: each year's RMD
+    (if required) comes out of the balance first, then the remainder grows
+    at ``return_rate_pct`` for the year. Age used for the distribution
+    period is the age reached by Dec 31 of that calendar year, matching how
+    the IRS determines the applicable Uniform Lifetime Table entry.
+    """
+    as_of = as_of or date.today()
+    rows = []
+    for i in range(years):
+        calendar_year = as_of.year + i
+        info = calculate_rmd(birthdate, balance, as_of=date(calendar_year, 12, 31))
+        rows.append({
+            "year": i + 1,
+            "calendar_year": calendar_year,
+            "age": info["age"],
+            "required": info["required"],
+            "distribution_period": info["distribution_period"],
+            "balance": round(balance, 2),
+            "rmd_amount": info["rmd_amount"],
+        })
+        balance = max(0.0, balance - info["rmd_amount"]) * (1 + return_rate_pct / 100)
+    return rows

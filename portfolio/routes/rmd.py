@@ -5,8 +5,8 @@ from datetime import date, datetime
 from flask import Blueprint, jsonify
 
 from portfolio.db import get_db
-from portfolio.services.rmd import RMD_SUBJECT_ACCOUNT_TYPES, calculate_rmd
-from portfolio.services.settings import get_owner_birthdates
+from portfolio.services.rmd import RMD_SUBJECT_ACCOUNT_TYPES, calculate_rmd, project_rmds
+from portfolio.services.settings import get_owner_birthdates, get_withdrawal_assumptions
 
 bp = Blueprint("rmd_api", __name__)
 
@@ -24,6 +24,9 @@ def get_rmd():
     ).fetchall()
     balance_by_owner = {r["owner"]: r["balance"] or 0.0 for r in rows}
     birthdates = get_owner_birthdates()
+    assumptions = get_withdrawal_assumptions()
+    return_rate = assumptions["withdrawal_return_rate"]
+    projection_years = assumptions["withdrawal_years"]
 
     today = date.today()
     owners = []
@@ -38,9 +41,16 @@ def get_rmd():
         if birthdate_str:
             birthdate = datetime.strptime(birthdate_str, "%Y-%m-%d").date()
             entry.update(calculate_rmd(birthdate, balance, as_of=today))
+            entry["projection"] = project_rmds(
+                birthdate, balance, return_rate, projection_years, as_of=today
+            )
         owners.append(entry)
 
     return jsonify({
         "owners": owners,
         "account_types_included": sorted(RMD_SUBJECT_ACCOUNT_TYPES),
+        "projection_assumptions": {
+            "return_rate_pct": return_rate,
+            "years": projection_years,
+        },
     })

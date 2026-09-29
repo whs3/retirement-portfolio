@@ -28,6 +28,9 @@ def lookup_ticker_data(ticker: str) -> tuple[dict | None, int, str | None]:
         hist = t.history(period="1y")
         if hist.empty:
             return None, 404, f"No price history found for '{symbol}'"
+        hist = hist[hist["Close"].notna()]
+        if hist.empty:
+            return None, 404, f"No price history found for '{symbol}'"
 
         info = t.info
         name = info.get("longName") or info.get("shortName") or symbol

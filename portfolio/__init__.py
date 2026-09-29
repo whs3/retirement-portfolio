@@ -10,7 +10,7 @@ from portfolio.db import close_db, init_db
 from portfolio.extensions import csrf, limiter
 from portfolio.routes import register_blueprints
 from portfolio.security import local_network_only, security_headers
-from portfolio.services.audit import init_audit_log
+from portfolio.services.audit import archive_old_entries, init_audit_log, start_audit_archiver
 from portfolio.services.price_scheduler import start_price_refresh_scheduler
 from portfolio.timezone_util import SERVER_TIMEZONE
 
@@ -43,7 +43,9 @@ def create_app(config_object=Config):
     with app.app_context():
         init_db()
 
-    # Audit file handler
+    # Audit file handler — archive anything past the retention window before
+    # attaching, so a long-lived log doesn't make the first /api/audit call slow
+    archive_old_entries(app.config["AUDIT_LOG"])
     init_audit_log(app.config["AUDIT_LOG"])
 
     # Security hooks
@@ -75,4 +77,5 @@ def create_app(config_object=Config):
 
     register_blueprints(app)
     start_price_refresh_scheduler(app)
+    start_audit_archiver(app)
     return app

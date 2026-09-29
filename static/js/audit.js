@@ -85,7 +85,7 @@ async function loadAuditLog() {
   const entries = await res.json();
 
   document.getElementById('entryCount').textContent =
-    entries.length === 1 ? '1 entry' : `${entries.length} entries`;
+    (entries.length === 1 ? '1 entry' : `${entries.length} entries`) + ' (last 7 days)';
   document.getElementById('lastRefreshed').textContent =
     'Refreshed ' + new Date().toLocaleTimeString();
 

@@ -3,6 +3,7 @@ portfolio.db-wal
 portfolio.db-shm
 portfolio.db-journal
 portfolio_audit.log
+audit_archive/
 .secret_key
 .env
 retirement-portfolio.env

@@ -42,7 +42,7 @@ pytest --cov=portfolio --cov-report=term-missing
 python backup_db.py
 ```
 
-Runtime files written to the project root and gitignored: `portfolio.db` (+ WAL sidecars), `portfolio_audit.log`, `.secret_key` (if `SECRET_KEY` unset), optional `.env`, and `backups/`.
+Runtime files written to the project root and gitignored: `portfolio.db` (+ WAL sidecars), `portfolio_audit.log`, `audit_archive/` (archived audit-log history), `.secret_key` (if `SECRET_KEY` unset), optional `.env`, and `backups/`.
 
 ## Architecture
 
@@ -89,7 +89,7 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 | GET | `/api/rebalance` | Buy/Sell/Hold recommendations |
 | GET | `/api/export/csv` | Download holdings as CSV |
 | POST | `/api/import/csv` | Bulk-import holdings from a CSV matching the export format (all-or-nothing validation) |
-| GET | `/api/audit` | Audit log entries |
+| GET | `/api/audit` | Audit log entries from the last `RETENTION_DAYS` (7) days; older entries are archived off the live file |
 | GET | `/api/price/<ticker>` | Current price for a single ticker (yfinance) |
 | POST | `/api/holdings/refresh-prices` | Bulk-refresh prices for all holdings |
 | GET | `/api/settings` | Read app settings (FMP key status, `price_refresh_minutes`) |
@@ -112,7 +112,7 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 | Dashboard | `dashboard.html` | `dashboard.js` | By Owner + By Account Type doughnut charts + portfolio totals; category allocation table sorted by value; auto-refresh widget (minutes, 0 = off); drift alert banner when a category is 5+ points off its rebalance target |
 | Holdings | `holdings.html` | `holdings.js` | CRUD table for all holdings; Owner and Account Type filter dropdowns; search summary shows totals row; inline price refresh; Import CSV button (app's own export format, all-or-nothing); supports sell transactions via negative shares/cost_basis/current_value; Ticker Symbol is first field with auto-focus and auto-fetch on input (600 ms debounce); shares support up to 6 decimal places; second item in nav bar |
 | Rebalance | `rebalance.html` | `rebalance.js` | Buy/Sell/Hold recommendations vs target allocations; zero-target categories filtered from chart and table |
-| Audit | `audit.html` | `audit.js` | Audit log with search/filter |
+| Audit | `audit.html` | `audit.js` | Audit log with search/filter; shows only the last 7 days (older entries are archived) |
 | Lookup | `lookup.html` | `lookup.js` | Price history chart for any ticker; auto-loads ^GSPC, ^IXIC, ^MID (mid cap), ^RUT (small cap), SHY (short Treasuries) on open; analyst recommendations for stocks; fund info + tracked index for ETFs/funds; 1M/3M/6M/YTD/12M period selector on both charts |
 | Overlap | `overlap.html` | `overlap.js` | ETF holdings overlap — doughnut chart + full table |
 | Performance | `performance.html` | `performance.js` | Portfolio value over time with 3M/6M/YTD/12M period selector; optional benchmark comparison chart (S&P 500/NASDAQ/Russell 2000/S&P MidCap 400/SHY) vs. portfolio % change; stacked category breakdown chart; individual holdings % change chart; monthly gain/loss table |
@@ -130,6 +130,8 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 
 **Daily performance snapshots**: `/api/performance` no longer recomputes 12 months of history from yfinance on every request. `portfolio_snapshots` (one row per calendar date) stores the actual portfolio value, per-category totals, and per-ticker values as of that day. `services.snapshots.capture_snapshot()` upserts today's row (DB-only, no network) — called after every price refresh (manual or scheduled) in `services.prices.refresh_all_prices()`, and again at the top of `GET /api/performance` so the page is always current even if auto-refresh is off. The first time the table is empty, `backfill_if_empty()` seeds ~365 days using the old current-shares × historical-price approximation from `build_performance()` (still used only for this one-time bootstrap), then immediately overwrites today with a real value. `get_performance_history()` reads purely from the DB and reshapes it into the same response `build_performance()` used to return, so `static/js/performance.js` is unchanged.
 
+**Audit log archiving**: `portfolio_audit.log` is an append-only, plain-text log parsed line-by-line on every `GET /api/audit` call, so letting it grow unbounded made the Audit page slow to load. `services.audit.archive_old_entries()` splits out any line older than `RETENTION_DAYS` (7) into monthly files under `audit_archive/` (e.g. `audit_archive/portfolio_audit-2026-02.log`), rewrites the live file with only the recent lines, and — since the logging `FileHandler` holds the live path open in append mode — closes and reopens that handler around the swap so subsequent writes land in the new, small file. It runs once synchronously in `create_app()` (so a long-lived log gets pruned immediately on restart) and again every 24h from a daemon thread (`services.audit.start_audit_archiver()`, skipped in tests like the price-refresh scheduler). `GET /api/audit` also filters by timestamp itself as a second line of defense for the window right after a restart, before the startup archive call would otherwise have already handled it.
+
 **Key backend helpers** (under `portfolio/`)
 - `timezone_util.detect_iana_timezone()` / `SERVER_TIMEZONE` — IANA timezone from `/etc/timezone`, `/etc/localtime`, or `TZ`; injected into templates via a context processor.
 - `services.categories.get_ticker_category()` — Morningstar category (ETF/fund) or sector (stock); session-cached.
@@ -137,6 +139,7 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 - `validators.parse_positive_float()` / `parse_float()` — numeric input at API boundaries (`parse_float` allows negatives for sells).
 - `services.prices.refresh_all_prices()` — shared bulk yfinance refresh used by the API and the auto-refresh scheduler; captures a daily snapshot on success.
 - `services.price_scheduler.start_price_refresh_scheduler()` — daemon thread; interval from `price_refresh_minutes` (0 = off).
+- `services.audit.archive_old_entries()` / `start_audit_archiver()` — moves audit-log lines older than `RETENTION_DAYS` into `audit_archive/`, keeping the live file (and `/api/audit`) fast (see above).
 - `services.snapshots.capture_snapshot()` / `backfill_if_empty()` / `get_performance_history()` — daily portfolio value snapshots backing the Performance page (see above).
 
 **Dashboard drift alerts**: `dashboard.js` fetches the existing `/api/rebalance` endpoint (no new backend code) and shows a banner for any category where `|current_pct - target_pct| >= 5` percentage points, sorted by largest drift first. Zero-target categories are excluded, matching the Rebalance page's own filtering convention. The banner is hidden entirely when nothing crosses the threshold.

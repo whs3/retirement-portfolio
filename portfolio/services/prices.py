@@ -8,7 +8,7 @@ from datetime import datetime
 import yfinance as yf
 
 from portfolio.db import get_db
-from portfolio.services.audit import audit, get_app_logger
+from portfolio.services.audit import get_app_logger
 from portfolio.services.snapshots import capture_snapshot
 
 _refresh_lock = threading.Lock()
@@ -54,14 +54,6 @@ def _refresh_all_prices_unlocked() -> dict:
             db.execute(
                 "UPDATE holdings SET current_value=?, category=?, updated_at=? WHERE id=?",
                 (new_value, category, now, h["id"]),
-            )
-            audit(
-                "PRICE_UPDATE",
-                h["ticker"],
-                h["name"],
-                old_value=h["current_value"],
-                new_value=new_value,
-                price=price,
             )
             updated.append({
                 "ticker": h["ticker"],

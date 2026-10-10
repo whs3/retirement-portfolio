@@ -33,10 +33,19 @@ const _PERIOD_START_LABELS = {
 };
 
 const _PERIOD_GAIN_LABELS = {
-  '3m':  '3-Month Gain / Loss',
-  '6m':  '6-Month Gain / Loss',
-  '12m': '12-Month Gain / Loss',
-  'ytd': 'YTD Gain / Loss',
+  '3m':  '3-Month Investment Gain / Loss',
+  '6m':  '6-Month Investment Gain / Loss',
+  '12m': '12-Month Investment Gain / Loss',
+  'ytd': 'YTD Investment Gain / Loss',
+};
+
+const FLOW_SOURCES = {
+  manual:          'Manual',
+  holding_add:     'Added holding',
+  holding_edit:    'Share change',
+  holding_delete:  'Removed holding',
+  sell_all:        'Sold all',
+  import:          'CSV import',
 };
 
 const HOLDING_COLORS = [
@@ -54,12 +63,24 @@ function fmtK(n) {
   return fmt(n);
 }
 
+function fmtSigned(n) {
+  return (n > 0 ? '+' : '') + fmt(n);
+}
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // ── Data loading ──────────────────────────────────────────────────────────────
 
 async function loadPerformance() {
   const loading = document.getElementById('loadingMsg');
   loading.className     = 'alert';
-  loading.textContent   = 'Fetching 12 months of price history — this may take a moment…';
+  loading.textContent   = 'Loading performance…';
   loading.style.display = 'block';
 
   ['summaryCards','perfPeriodRow','chartCard','benchmarkChartCard','categoriesChartCard','holdingsChartCard','monthlyCard','untrackedNotice'].forEach(id => {
@@ -91,6 +112,11 @@ async function loadPerformance() {
       'As of ' + new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: document.querySelector('meta[name="server-timezone"]').content });
 
     _perfFullData = data;
+    _perfFullData.cash_flows = data.cash_flows || [];
+    const dateInput = document.getElementById('cashFlowDate');
+    if (dateInput && !dateInput.value && data.dates.length) {
+      dateInput.value = data.dates[data.dates.length - 1];
+    }
     document.getElementById('perfPeriodRow').style.display = 'flex';
     setPerfPeriod('12m');
 
@@ -113,14 +139,15 @@ async function loadPerformance() {
 function setPerfPeriod(period) {
   _activePerfPeriod = period;
   _updatePerfPeriodBtns();
-  const sliced  = _slicePerfData(_perfFullData, period);
-  const summary = _computeSummary(sliced.values, _perfFullData.summary.end_value);
-  renderSummary(summary, period);
+  const sliced = _slicePerfData(_perfFullData, period);
+  const flows  = _perfFullData.cash_flows || [];
+  renderSummary(_summarize(sliced.dates, sliced.values, flows), period);
   renderChart(sliced.dates, sliced.values);
   renderCategoriesChart(sliced.dates, sliced.categories_series || []);
   renderHoldingsChart(sliced.dates, sliced.holdings_series || []);
-  renderMonthly(_filterMonthly(_perfFullData.monthly, sliced.dates));
-  renderBenchmarkChart(sliced.dates, sliced.values);
+  renderMonthly(_monthlyFromSeries(sliced.dates, sliced.values, flows));
+  renderBenchmarkChart(sliced.dates, _twrIndex(sliced.dates, sliced.values, flows));
+  renderCashFlows(sliced.dates, flows);
 }
 
 function _updatePerfPeriodBtns() {
@@ -161,28 +188,101 @@ function _slicePerfData(data, period) {
   };
 }
 
-function _computeSummary(values, currentEndValue) {
-  if (!values.length) return {};
-  const startVal = values[0];
-  const gain     = currentEndValue - startVal;
+// Attribute each flow to the snapshot that first includes the money. Flows on
+// or before the first day are already inside the starting value.
+function _flowsBySnapshot(dates, flows) {
+  const totals = {};
+  if (!dates.length) return totals;
+  const start = dates[0];
+  const end = dates[dates.length - 1];
+  for (const flow of flows || []) {
+    const flowDate = flow.flow_date;
+    if (!flowDate || flowDate <= start || flowDate > end) continue;
+    const target = dates.find(day => day >= flowDate);
+    if (!target || target <= start) continue;
+    totals[target] = (totals[target] || 0) + Number(flow.amount);
+  }
+  return totals;
+}
+
+function _round2(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+// Matches portfolio.services.cash_flows.period_return.
+function _periodReturn(dates, values, flows) {
+  if (!dates.length || !values.length) {
+    return { value_change: 0, net_flow: 0, gain: 0, gain_pct: 0 };
+  }
+  const start = dates[0];
+  const end = dates[dates.length - 1];
+  let net = 0;
+  for (const flow of flows || []) {
+    if (flow.flow_date > start && flow.flow_date <= end) net += Number(flow.amount);
+  }
+  net = _round2(net);
+  const valueChange = _round2(values[values.length - 1] - values[0]);
+  const gain = _round2(valueChange - net);
+  const byDay = _flowsBySnapshot(dates, flows);
+  let factor = 1;
+  for (let i = 1; i < dates.length; i++) {
+    const begin = Number(values[i - 1]);
+    const market = (Number(values[i]) - begin) - (byDay[dates[i]] || 0);
+    if (Math.abs(begin) > 0.01) factor *= 1 + market / begin;
+  }
   return {
-    start_value: startVal,
-    end_value:   currentEndValue,
-    gain:        gain,
-    gain_pct:    startVal ? (gain / startVal * 100) : 0,
-    peak_value:  Math.max(...values, currentEndValue),
+    value_change: valueChange,
+    net_flow: net,
+    gain: gain,
+    gain_pct: Math.round((factor - 1) * 10000) / 100,
   };
 }
 
-function _filterMonthly(monthly, slicedDates) {
-  if (!monthly || !slicedDates.length) return monthly || [];
-  const startYM = slicedDates[0].slice(0, 7);  // "YYYY-MM"
-  const MONTHS  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return monthly.filter(m => {
-    const [mon, yr] = m.month.split(' ');
-    const monthNum  = String(MONTHS.indexOf(mon) + 1).padStart(2, '0');
-    return `${yr}-${monthNum}` >= startYM;
+function _summarize(dates, values, flows) {
+  if (!dates.length || !values.length) return {};
+  return {
+    start_value: values[0],
+    end_value: values[values.length - 1],
+    peak_value: Math.max(...values),
+    ..._periodReturn(dates, values, flows),
+  };
+}
+
+function _monthlyFromSeries(dates, values, flows) {
+  const groups = new Map();
+  dates.forEach((day, i) => {
+    const ym = day.slice(0, 7);
+    if (!groups.has(ym)) groups.set(ym, []);
+    groups.get(ym).push(i);
   });
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const rows = [];
+  for (const [ym, idxs] of groups) {
+    const monthDates = idxs.map(i => dates[i]);
+    const monthValues = idxs.map(i => values[i]);
+    const [year, month] = ym.split('-');
+    rows.push({
+      month: `${months[Number(month) - 1]} ${year}`,
+      start: monthValues[0],
+      end: monthValues[monthValues.length - 1],
+      ..._periodReturn(monthDates, monthValues, flows),
+    });
+  }
+  return rows;
+}
+
+// Growth of 100 with deposits removed, so the line matches gain_pct.
+function _twrIndex(dates, values, flows) {
+  if (!values.length) return [];
+  const byDay = _flowsBySnapshot(dates, flows);
+  const index = [100];
+  for (let i = 1; i < values.length; i++) {
+    const begin = Number(values[i - 1]);
+    const market = (Number(values[i]) - begin) - (byDay[dates[i]] || 0);
+    const r = Math.abs(begin) > 0.01 ? market / begin : 0;
+    index.push(index[i - 1] * (1 + r));
+  }
+  return index;
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -192,7 +292,7 @@ function renderSummary(s, period) {
 
   const pos = s.gain >= 0;
   document.getElementById('startValueLabel').textContent = _PERIOD_START_LABELS[period] || 'Value at Start';
-  document.getElementById('gainLabel').textContent       = _PERIOD_GAIN_LABELS[period]  || 'Period Gain / Loss';
+  document.getElementById('gainLabel').textContent       = _PERIOD_GAIN_LABELS[period]  || 'Investment Gain / Loss';
 
   document.getElementById('startValue').textContent = fmt(s.start_value);
   document.getElementById('endValue').textContent   = fmt(s.end_value);
@@ -202,8 +302,14 @@ function renderSummary(s, period) {
   const pctEl  = document.getElementById('gainPct');
   gainEl.textContent = (pos ? '+' : '') + fmt(s.gain);
   gainEl.className   = 'card-value ' + (pos ? 'text-success' : 'text-danger');
-  pctEl.textContent  = (pos ? '+' : '') + s.gain_pct.toFixed(2) + '%';
+  pctEl.textContent  = (pos ? '+' : '') + s.gain_pct.toFixed(2) + '% time-weighted';
   pctEl.className    = 'card-sub '    + (pos ? 'text-success' : 'text-danger');
+
+  const flowEl = document.getElementById('netFlowValue');
+  flowEl.textContent = fmtSigned(s.net_flow || 0);
+  flowEl.className = 'card-value';
+  document.getElementById('valueChangeSub').textContent =
+    'Value change ' + fmtSigned(s.value_change || 0);
 
   document.getElementById('summaryCards').style.display = '';
 }
@@ -613,6 +719,7 @@ function renderMonthly(monthly) {
       <td>${m.month}</td>
       <td class="text-right">${fmt(m.start)}</td>
       <td class="text-right">${fmt(m.end)}</td>
+      <td class="text-right">${fmtSigned(m.net_flow || 0)}</td>
       <td class="text-right ${cls}">${pos ? '+' : ''}${fmt(m.gain)}</td>
       <td class="text-right ${cls}">${pos ? '+' : ''}${m.gain_pct.toFixed(2)}%</td>
     </tr>`;
@@ -626,7 +733,10 @@ function renderMonthly(monthly) {
 function setBenchmark(ticker) {
   _activeBenchmark = ticker;
   const sliced = _slicePerfData(_perfFullData, _activePerfPeriod);
-  renderBenchmarkChart(sliced.dates, sliced.values);
+  renderBenchmarkChart(
+    sliced.dates,
+    _twrIndex(sliced.dates, sliced.values, _perfFullData.cash_flows || []),
+  );
 }
 
 async function _fetchBenchmark(ticker) {
@@ -647,7 +757,10 @@ async function _fetchBenchmark(ticker) {
     statusEl.textContent = '';
     if (_activeBenchmark === ticker) {
       const sliced = _slicePerfData(_perfFullData, _activePerfPeriod);
-      renderBenchmarkChart(sliced.dates, sliced.values);
+      renderBenchmarkChart(
+        sliced.dates,
+        _twrIndex(sliced.dates, sliced.values, _perfFullData.cash_flows || []),
+      );
     }
   } catch (err) {
     if (seq !== _benchmarkSeq) return;
@@ -705,6 +818,8 @@ function renderBenchmarkChart(dates, values) {
 
   const portfolioPct = values.map(v => portfolioBase ? +((v - portfolioBase) / portfolioBase * 100).toFixed(4) : 0);
   const benchPct     = alignedBench.map(v => benchBase ? +((v - benchBase) / benchBase * 100).toFixed(4) : 0);
+
+  statusEl.textContent = 'Portfolio line is investment return, with deposits and withdrawals removed.';
 
   const label = BENCHMARK_LABELS[_activeBenchmark] || _activeBenchmark;
   const titleLabel = _activePerfPeriod === 'ytd'
@@ -844,4 +959,97 @@ function selectAllHoldings(visible) {
   holdingsChart.update();
 }
 
-document.addEventListener('DOMContentLoaded', loadPerformance);
+function renderCashFlows(dates, flows) {
+  const card = document.getElementById('cashFlowCard');
+  if (!card) return;
+  card.style.display = '';
+  const start = dates && dates.length ? dates[0] : '';
+  const end = dates && dates.length ? dates[dates.length - 1] : '';
+  const rows = flows || [];
+  const outside = start
+    ? rows.filter(f => f.flow_date < start || f.flow_date > end).length
+    : 0;
+  const msg = document.getElementById('cashFlowMsg');
+  if (msg && !msg.classList.contains('text-danger')) {
+    msg.className = 'text-muted';
+    msg.textContent = outside
+      ? `${outside} cash flow${outside === 1 ? ' is' : 's are'} outside this period, so ${outside === 1 ? 'it is' : 'they are'} not part of the gain above.`
+      : '';
+  }
+  const body = document.getElementById('cashFlowBody');
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="6" class="text-center text-muted" style="padding:1rem">
+      No cash flows yet.</td></tr>`;
+    return;
+  }
+  body.innerHTML = [...rows].reverse().map(f => {
+    const account = [f.owner, f.account_type].filter(Boolean).join(' · ') || '—';
+    const source = FLOW_SOURCES[f.source] || f.source || '';
+    const note = f.note ? esc(f.note) : esc(source);
+    const sourceSuffix = f.note && source
+      ? ` <span class="text-muted">(${esc(source)})</span>`
+      : '';
+    return `<tr>
+      <td>${esc(f.flow_date)}</td>
+      <td>${esc(account)}</td>
+      <td>${esc(f.ticker || '—')}</td>
+      <td>${note}${sourceSuffix}</td>
+      <td class="text-right">${fmtSigned(Number(f.amount))}</td>
+      <td class="text-right">
+        <button type="button" class="btn btn-sm btn-danger" onclick="deleteCashFlow(${Number(f.id)})">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function addCashFlow(event) {
+  event.preventDefault();
+  const msg = document.getElementById('cashFlowMsg');
+  msg.className = '';
+  msg.textContent = '';
+  const body = {
+    flow_date: document.getElementById('cashFlowDate').value,
+    amount: document.getElementById('cashFlowAmount').value,
+    owner: document.getElementById('cashFlowOwner').value,
+    account_type: document.getElementById('cashFlowAccount').value,
+    ticker: document.getElementById('cashFlowTicker').value,
+    note: document.getElementById('cashFlowNote').value,
+  };
+  try {
+    const created = await apiFetch('/api/cash-flows', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    _perfFullData.cash_flows = _perfFullData.cash_flows || [];
+    _perfFullData.cash_flows.push(created);
+    _perfFullData.cash_flows.sort((a, b) => a.flow_date.localeCompare(b.flow_date) || a.id - b.id);
+    document.getElementById('cashFlowAmount').value = '';
+    document.getElementById('cashFlowTicker').value = '';
+    document.getElementById('cashFlowNote').value = '';
+    setPerfPeriod(_activePerfPeriod);
+  } catch (err) {
+    msg.className = 'text-danger';
+    msg.textContent = err.message;
+  }
+}
+
+async function deleteCashFlow(id) {
+  const msg = document.getElementById('cashFlowMsg');
+  msg.className = '';
+  msg.textContent = '';
+  try {
+    await apiFetch('/api/cash-flows/' + id, { method: 'DELETE' });
+    _perfFullData.cash_flows = (_perfFullData.cash_flows || []).filter(f => f.id !== id);
+    setPerfPeriod(_activePerfPeriod);
+  } catch (err) {
+    msg.className = 'text-danger';
+    msg.textContent = err.message;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('cashFlowForm');
+  if (form) form.addEventListener('submit', addCashFlow);
+  loadPerformance();
+});

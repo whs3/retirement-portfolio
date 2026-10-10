@@ -12,10 +12,10 @@ import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-import pandas as pd
-
 from portfolio.db import get_db
+from portfolio.services.cash_flows import list_cash_flows, period_return
 from portfolio.services.performance import build_performance
+from portfolio.timezone_util import now_iso, now_local, today_iso
 from portfolio.validators import NEGLIGIBLE_VALUE, is_significant_value
 
 
@@ -66,8 +66,8 @@ def capture_snapshot() -> None:
         }
         category_json[category] = category_json.get(category, 0.0) + round(value, 2)
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-    now_iso = datetime.utcnow().isoformat()
+    today = today_iso()
+    captured_at = now_iso()
     db.execute(
         """INSERT INTO portfolio_snapshots
                (date, total_value, total_cost_basis, category_json, holdings_json,
@@ -86,7 +86,7 @@ def capture_snapshot() -> None:
             json.dumps(category_json),
             json.dumps(holdings_json),
             round(untracked_value, 2),
-            now_iso,
+            captured_at,
         ),
     )
     db.commit()
@@ -125,7 +125,7 @@ def backfill_once() -> None:
         "SELECT COALESCE(SUM(cost_basis), 0) AS c FROM holdings"
     ).fetchone()["c"]
 
-    now_iso = datetime.utcnow().isoformat()
+    captured_at = now_iso()
     for i, date in enumerate(dates):
         holdings_json = {
             h["ticker"]: {
@@ -155,13 +155,13 @@ def backfill_once() -> None:
                 json.dumps(category_json),
                 json.dumps(holdings_json),
                 round(untracked_value, 2),
-                now_iso,
+                captured_at,
             ),
         )
     db.execute(
         "INSERT INTO settings (key, value) VALUES (?, ?) "
         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        (_BACKFILL_MARKER_KEY, now_iso),
+        (_BACKFILL_MARKER_KEY, captured_at),
     )
     db.commit()
     # Overwrite today's backfilled estimate (if any) with a real, live-computed value.
@@ -169,10 +169,14 @@ def backfill_once() -> None:
 
 
 def get_performance_history(days: int = 365) -> dict:
-    """Read stored snapshots and reshape them into build_performance()'s response
-    shape, so static/js/performance.js needs no changes."""
+    """Read stored snapshots and reshape them for the Performance page.
+
+    ``summary.gain`` is the investment gain: the change in portfolio value
+    minus cash flows between the first and last snapshot. Per-holding values
+    are zero on days the ticker is absent, so a sale does not stay on the chart.
+    """
     db = get_db()
-    cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    cutoff = (now_local().date() - timedelta(days=days)).isoformat()
     rows = db.execute(
         "SELECT * FROM portfolio_snapshots WHERE date >= ? ORDER BY date ASC",
         (cutoff,),
@@ -188,6 +192,7 @@ def get_performance_history(days: int = 365) -> dict:
             "categories_series": [],
             "untracked": [],
             "untracked_value": 0.0,
+            "cash_flows": [],
         }
 
     dates = [r["date"] for r in rows]
@@ -201,16 +206,18 @@ def get_performance_history(days: int = 365) -> dict:
     holdings_series = []
     for ticker in all_tickers:
         series: list[float] = []
-        last_value = 0.0
         name = ticker
         category = "Uncategorized"
         for hj in per_row_holdings:
             info = hj.get(ticker)
             if info is not None:
-                last_value = info["value"]
                 name = info.get("name", name)
                 category = info.get("category") or category
-            series.append(round(last_value, 2))
+                series.append(round(info["value"], 2))
+            else:
+                # Absent means sold or not yet held. Carrying the previous
+                # value forward kept closed positions on the chart forever.
+                series.append(0.0)
         if not series or max(abs(v) for v in series) <= NEGLIGIBLE_VALUE:
             continue
         holdings_series.append({
@@ -236,26 +243,28 @@ def get_performance_history(days: int = 365) -> dict:
 
     start_val = values[0]
     end_val = values[-1]
-    gain = end_val - start_val
-    gain_pct = (gain / start_val * 100) if start_val else 0
+    # The whole ledger, not just this window. Period math ignores flows outside
+    # the snapshots, and the page can still show an older entry the user added.
+    cash_flows = list_cash_flows(db)
+    stats = period_return(dates, values, cash_flows)
     peak_val = max(values)
     trough_val = min(values)
 
-    series = pd.Series(values, index=pd.to_datetime(dates))
-    monthly_first = series.resample("MS").first()
-    monthly_last = series.resample("MS").last()
+    by_month: dict[str, list[int]] = defaultdict(list)
+    for i, day in enumerate(dates):
+        by_month[day[:7]].append(i)
     monthly = []
-    for month in monthly_last.index:
-        m_start = float(monthly_first.get(month, monthly_last[month]))
-        m_end = float(monthly_last[month])
-        m_gain = m_end - m_start
-        m_pct = (m_gain / m_start * 100) if m_start else 0
+    for ym in sorted(by_month):
+        idxs = by_month[ym]
+        i0, i1 = idxs[0], idxs[-1]
+        month_dates = [dates[i] for i in idxs]
+        month_values = [values[i] for i in idxs]
+        month_stats = period_return(month_dates, month_values, cash_flows)
         monthly.append({
-            "month": month.strftime("%b %Y"),
-            "start": round(m_start, 2),
-            "end": round(m_end, 2),
-            "gain": round(m_gain, 2),
-            "gain_pct": round(m_pct, 2),
+            "month": datetime.strptime(ym, "%Y-%m").strftime("%b %Y"),
+            "start": round(values[i0], 2),
+            "end": round(values[i1], 2),
+            **month_stats,
         })
 
     return {
@@ -264,12 +273,12 @@ def get_performance_history(days: int = 365) -> dict:
         "summary": {
             "start_value": round(start_val, 2),
             "end_value": round(end_val, 2),
-            "gain": round(gain, 2),
-            "gain_pct": round(gain_pct, 2),
             "peak_value": round(peak_val, 2),
             "trough_value": round(trough_val, 2),
+            **stats,
         },
         "monthly": monthly,
+        "cash_flows": cash_flows,
         "holdings_series": holdings_series,
         "categories_series": categories_series,
         "untracked": [],

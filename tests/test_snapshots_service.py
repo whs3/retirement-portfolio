@@ -12,8 +12,9 @@ from portfolio.services.snapshots import (
     capture_snapshot,
     get_performance_history,
 )
+from portfolio.timezone_util import today_iso
 
-TODAY = datetime.utcnow().strftime("%Y-%m-%d")
+TODAY = today_iso()
 
 
 def _insert(db, **fields):
@@ -219,7 +220,11 @@ def test_get_performance_history_shape_from_snapshots_no_network(app_ctx):
     assert result["summary"]["start_value"] == 1000
     assert result["summary"]["end_value"] == 1200
     assert result["summary"]["gain"] == 200
+    assert result["summary"]["value_change"] == 200
+    assert result["summary"]["net_flow"] == 0
+    assert result["summary"]["gain_pct"] == 20
     assert result["summary"]["peak_value"] == 1200
+    assert result["cash_flows"] == []
     assert result["summary"]["trough_value"] == 1000
     assert result["holdings_series"] == [
         {"ticker": "AAPL", "name": "Apple Inc.", "category": "Technology",
@@ -244,3 +249,90 @@ def test_performance_route_uses_snapshots(client, insert_holding):
     assert data["dates"] == [TODAY]
     assert data["values"] == [1500]
     assert data["summary"]["end_value"] == 1500
+    assert data["summary"]["gain"] == 0
+    assert data["summary"]["net_flow"] == 0
+
+
+def test_capture_snapshot_dates_in_server_timezone(app_ctx):
+    db = get_db()
+    _insert(db)
+    with patch("portfolio.services.snapshots.today_iso", return_value="2030-05-05"):
+        capture_snapshot()
+    row = db.execute("SELECT date FROM portfolio_snapshots").fetchone()
+    assert row["date"] == "2030-05-05"
+
+
+def test_sold_ticker_is_zero_instead_of_carried_forward(app_ctx):
+    db = get_db()
+    _insert_snapshot(
+        db, "2026-01-01", 1000,
+        {"AAPL": {"name": "Apple Inc.", "value": 1000, "category": "Technology"}},
+        {"Technology": 1000},
+    )
+    _insert_snapshot(db, "2026-01-02", 0, {}, {})
+
+    result = get_performance_history()
+    assert result["holdings_series"] == [
+        {"ticker": "AAPL", "name": "Apple Inc.", "category": "Technology",
+         "values": [1000, 0]}
+    ]
+    assert result["categories_series"] == [
+        {"category": "Technology", "values": [1000, 0]}
+    ]
+
+
+def test_deposit_is_excluded_from_investment_gain(app_ctx):
+    db = get_db()
+    for day, total in (("2026-01-01", 1000), ("2026-01-02", 2100), ("2026-01-03", 2200)):
+        _insert_snapshot(
+            db, day, total,
+            {"AAPL": {"name": "Apple Inc.", "value": total, "category": "Technology"}},
+            {"Technology": total},
+        )
+    db.execute(
+        """INSERT INTO cash_flows
+               (flow_date, amount, owner, account_type, ticker, note, source,
+                holding_id, created_at)
+           VALUES ('2026-01-02', 1000, 'Bill', 'IRA', 'AAPL', 'Deposit', 'manual',
+                   NULL, '2026-01-02T00:00:00')"""
+    )
+    db.commit()
+
+    result = get_performance_history()
+    summary = result["summary"]
+    assert summary["value_change"] == 1200
+    assert summary["net_flow"] == 1000
+    assert summary["gain"] == 200
+    # Day 1 earns 100 on 1000, day 2 earns 100 on 2100.
+    assert summary["gain_pct"] == 15.24
+    assert result["cash_flows"][0]["amount"] == 1000
+
+    january = result["monthly"][0]
+    assert january["net_flow"] == 1000
+    assert january["gain"] == 200
+
+
+def test_deposit_between_snapshots_counts_on_the_next_snapshot(app_ctx):
+    db = get_db()
+    _insert_snapshot(
+        db, "2026-01-01", 1000,
+        {"AAPL": {"name": "Apple Inc.", "value": 1000, "category": "Technology"}},
+        {"Technology": 1000},
+    )
+    _insert_snapshot(
+        db, "2026-01-03", 2100,
+        {"AAPL": {"name": "Apple Inc.", "value": 2100, "category": "Technology"}},
+        {"Technology": 2100},
+    )
+    db.execute(
+        """INSERT INTO cash_flows
+               (flow_date, amount, owner, account_type, ticker, note, source,
+                holding_id, created_at)
+           VALUES ('2026-01-02', 1000, '', '', '', 'Deposit', 'manual',
+                   NULL, '2026-01-02T00:00:00')"""
+    )
+    db.commit()
+
+    summary = get_performance_history()["summary"]
+    assert summary["gain"] == 100
+    assert summary["gain_pct"] == 10

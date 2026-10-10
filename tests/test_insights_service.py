@@ -72,3 +72,26 @@ def test_insights_excludes_negligible_dust_ticker(app_ctx):
     fetched = {c.args[0] for c in mock_analyst.call_args_list}
     assert "BNDX" not in fetched
     assert "AAPL" in fetched
+
+
+def test_insights_fetches_each_ticker_once(app_ctx):
+    """The same symbol in two accounts is one analyst lookup."""
+    db = get_db()
+    _insert(db, name="Apple IRA", ticker="AAPL", asset_type="stock", shares=10, cost=1000, value=1500)
+    _insert(
+        db, name="Apple Taxable", ticker="AAPL", asset_type="stock",
+        shares=4, cost=400, value=600, owner="Akiko",
+    )
+    db.commit()
+
+    with (
+        patch("portfolio.services.insights.get_market_snapshot", return_value=[]),
+        patch(
+            "portfolio.services.insights.get_analyst_snapshot",
+            return_value={"has_analyst": False},
+        ) as mock_analyst,
+    ):
+        build_insights()
+
+    assert mock_analyst.call_count == 1
+    assert mock_analyst.call_args.args[0] == "AAPL"

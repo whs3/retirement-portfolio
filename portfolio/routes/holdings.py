@@ -6,6 +6,15 @@ from flask import Blueprint, jsonify, request
 
 from portfolio.db import get_db
 from portfolio.services.audit import audit
+from portfolio.services.cash_flows import (
+    SOURCE_HOLDING_ADD,
+    SOURCE_HOLDING_DELETE,
+    SOURCE_HOLDING_EDIT,
+    SOURCE_SELL_ALL,
+    external_flow_from_share_change,
+    insert_cash_flow,
+)
+from portfolio.timezone_util import today_iso
 from portfolio.validators import VALID_TICKER, is_significant_value, parse_float
 
 bp = Blueprint("holdings", __name__)
@@ -63,6 +72,17 @@ def add_holding():
             now,
         ),
     )
+    insert_cash_flow(
+        db,
+        flow_date=today_iso(),
+        amount=current_val,
+        owner=(data.get("owner") or "").strip(),
+        account_type=(data.get("account_type") or "").strip(),
+        ticker=(data.get("ticker") or "").strip().upper(),
+        note=f"Added {data['name'].strip()}",
+        source=SOURCE_HOLDING_ADD,
+        holding_id=cur.lastrowid,
+    )
     db.commit()
     audit(
         "ADD",
@@ -105,6 +125,20 @@ def update_holding(hid):
         data["category"] = "Cash"
         new_value = new_shares
 
+    name = (data.get("name") or row["name"]).strip()
+    category = (
+        data.get("category") if data.get("category") is not None else row["category"]
+    ).strip()
+    owner = (
+        data.get("owner") if data.get("owner") is not None else (row["owner"] or "")
+    ).strip()
+    account_type = (
+        data.get("account_type")
+        if data.get("account_type") is not None
+        else (row["account_type"] or "")
+    ).strip()
+    notes = (data.get("notes") or row["notes"]).strip()
+
     now = datetime.utcnow().isoformat()
     db.execute(
         """UPDATE holdings
@@ -112,32 +146,33 @@ def update_holding(hid):
                shares=?, cost_basis=?, current_value=?, purchase_date=?, notes=?, updated_at=?
            WHERE id=?""",
         (
-            (data.get("name") or row["name"]).strip(),
+            name,
             ticker,
             data.get("asset_type") or row["asset_type"],
-            (
-                data.get("category")
-                if data.get("category") is not None
-                else row["category"]
-            ).strip(),
-            (
-                data.get("owner")
-                if data.get("owner") is not None
-                else (row["owner"] or "")
-            ).strip(),
-            (
-                data.get("account_type")
-                if data.get("account_type") is not None
-                else (row["account_type"] or "")
-            ).strip(),
+            category,
+            owner,
+            account_type,
             new_shares,
             new_cost,
             new_value,
             data.get("purchase_date") or row["purchase_date"],
-            (data.get("notes") or row["notes"]).strip(),
+            notes,
             now,
             hid,
         ),
+    )
+    insert_cash_flow(
+        db,
+        flow_date=today_iso(),
+        amount=external_flow_from_share_change(
+            row["shares"], row["current_value"], new_shares, new_value
+        ),
+        owner=owner,
+        account_type=account_type,
+        ticker=ticker,
+        note="Share change",
+        source=SOURCE_HOLDING_EDIT,
+        holding_id=hid,
     )
     db.commit()
     audit(
@@ -159,6 +194,17 @@ def delete_holding(hid):
     if not row:
         return jsonify({"error": "Not found"}), 404
     db.execute("DELETE FROM holdings WHERE id = ?", (hid,))
+    insert_cash_flow(
+        db,
+        flow_date=today_iso(),
+        amount=-row["current_value"],
+        owner=row["owner"] or "",
+        account_type=row["account_type"] or "",
+        ticker=row["ticker"] or "",
+        note=f"Removed {row['name']}",
+        source=SOURCE_HOLDING_DELETE,
+        holding_id=hid,
+    )
     db.commit()
     audit(
         "DELETE",
@@ -234,6 +280,17 @@ def sell_all_holding():
             now,
             now,
         ),
+    )
+    insert_cash_flow(
+        db,
+        flow_date=today_iso(),
+        amount=-total_current_value,
+        owner=owner,
+        account_type=account_type,
+        ticker=ticker,
+        note="Sold all shares",
+        source=SOURCE_SELL_ALL,
+        holding_id=cur.lastrowid,
     )
     db.commit()
     audit(

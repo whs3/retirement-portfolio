@@ -24,6 +24,20 @@ def refresh_all_prices() -> dict:
         return _refresh_all_prices_unlocked()
 
 
+def _fetch_price_and_category(symbol: str) -> tuple[float | None, str]:
+    """One Yahoo lookup for a symbol. Category is returned but not required."""
+    ticker = yf.Ticker(symbol)
+    info = ticker.info or {}
+    price = info.get("regularMarketPrice")
+    if price is None:
+        try:
+            price = ticker.fast_info.last_price
+        except Exception:
+            price = None
+    category = info.get("category") or info.get("sector") or ""
+    return price, category
+
+
 def _refresh_all_prices_unlocked() -> dict:
     db = get_db()
     holdings = db.execute(
@@ -34,36 +48,52 @@ def _refresh_all_prices_unlocked() -> dict:
     now = datetime.utcnow().isoformat()
     _app_logger = get_app_logger()
 
+    # One lookup per symbol, then apply that price to every lot. A set category
+    # is left alone so a refresh cannot move a holding between rebalance buckets.
+    grouped: dict[str, list] = {}
     for h in holdings:
-        if h["ticker"].upper() == "$$CASH":
+        symbol = (h["ticker"] or "").strip().upper()
+        if symbol == "$$CASH":
             db.execute(
                 "UPDATE holdings SET current_value=shares, updated_at=? WHERE id=?",
                 (now, h["id"]),
             )
-            updated.append(h["ticker"])
+            updated.append(symbol)
             continue
+        grouped.setdefault(symbol, []).append(h)
+
+    for symbol, rows in grouped.items():
         try:
-            t = yf.Ticker(h["ticker"])
-            info = t.info
-            price = info.get("regularMarketPrice") or t.fast_info.last_price
-            if price is None:
-                skipped.append(h["ticker"])
-                continue
-            category = info.get("category") or info.get("sector") or h["category"]
+            price, fetched_category = _fetch_price_and_category(symbol)
+        except Exception as exc:
+            _app_logger.error("refresh_prices %s: %s", symbol, exc)
+            errors.append({"ticker": symbol, "error": "Unable to fetch price data"})
+            continue
+        if price is None:
+            skipped.append(symbol)
+            continue
+        for h in rows:
+            stored = (h["category"] or "").strip()
+            category = stored or fetched_category or ""
             new_value = round(h["shares"] * price, 2)
-            db.execute(
-                "UPDATE holdings SET current_value=?, category=?, updated_at=? WHERE id=?",
-                (new_value, category, now, h["id"]),
-            )
+            if not stored and fetched_category:
+                db.execute(
+                    """UPDATE holdings
+                       SET current_value=?, category=?, updated_at=?
+                       WHERE id=?""",
+                    (new_value, fetched_category, now, h["id"]),
+                )
+            else:
+                db.execute(
+                    "UPDATE holdings SET current_value=?, updated_at=? WHERE id=?",
+                    (new_value, now, h["id"]),
+                )
             updated.append({
-                "ticker": h["ticker"],
+                "ticker": symbol,
                 "price": price,
                 "new_value": new_value,
                 "category": category,
             })
-        except Exception as exc:
-            _app_logger.error("refresh_prices %s: %s", h["ticker"], exc)
-            errors.append({"ticker": h["ticker"], "error": "Unable to fetch price data"})
 
     db.commit()
 

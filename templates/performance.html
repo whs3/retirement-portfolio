@@ -8,8 +8,8 @@
 </div>
 
 <p class="text-muted" style="margin-bottom:1.5rem">
-  Shows what your <strong>current holdings</strong> would have been worth each day
-  (current shares × historical closing prices).
+  Portfolio value is the daily snapshot of your balances. Investment gain is that
+  change in value minus deposits and withdrawals, so money you add is not counted as a return.
 </p>
 
 <div id="loadingMsg" class="alert" style="display:none"></div>
@@ -47,9 +47,14 @@
     <div class="card-value" id="endValue">—</div>
   </div>
   <div class="card summary-card">
-    <div class="card-label" id="gainLabel">12-Month Gain / Loss</div>
+    <div class="card-label" id="gainLabel">12-Month Investment Gain / Loss</div>
     <div class="card-value" id="gainValue">—</div>
     <div class="card-sub"   id="gainPct">—</div>
+  </div>
+  <div class="card summary-card">
+    <div class="card-label">Net Cash Flow</div>
+    <div class="card-value" id="netFlowValue">—</div>
+    <div class="card-sub"   id="valueChangeSub">—</div>
   </div>
   <div class="card summary-card">
     <div class="card-label">Peak Value</div>
@@ -106,6 +111,10 @@
 <div class="card" id="monthlyCard" style="display:none">
   <div style="padding:1rem 1rem 0">
     <h2 style="font-size:1rem;font-weight:600">Monthly Performance</h2>
+    <p class="card-description">
+      Each month starts from its first snapshot. Cash flow is money that arrived after that
+      snapshot, so a deposit already included in the start value is not subtracted again.
+    </p>
   </div>
   <div class="table-responsive">
     <table class="table">
@@ -114,11 +123,84 @@
           <th>Month</th>
           <th class="text-right">Start Value</th>
           <th class="text-right">End Value</th>
-          <th class="text-right">Change ($)</th>
-          <th class="text-right">Change (%)</th>
+          <th class="text-right">Cash Flow</th>
+          <th class="text-right">Investment Gain</th>
+          <th class="text-right">Return</th>
         </tr>
       </thead>
       <tbody id="monthlyBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Cash flows -->
+<div class="card" id="cashFlowCard" style="display:none">
+  <h2 class="card-title">Cash Flows</h2>
+  <p class="card-description">
+    Deposits are positive and withdrawals are negative. Adding, selling, or deleting a
+    holding records a flow for the value that entered or left. Use this form when that
+    value is already in your balances, or to correct an automatic entry. The cards and
+    the monthly table count a flow only after the first day of the selected period,
+    because money already in the starting value is not a gain or a loss.
+  </p>
+  <form id="cashFlowForm" class="form-grid cash-flow-form">
+    <div class="form-group">
+      <label for="cashFlowDate">Date</label>
+      <input type="date" id="cashFlowDate" required>
+    </div>
+    <div class="form-group">
+      <label for="cashFlowAmount">Amount ($)</label>
+      <input type="number" id="cashFlowAmount" step="0.01" placeholder="1000 or -1000" required>
+    </div>
+    <div class="form-group">
+      <label for="cashFlowOwner">Owner</label>
+      <select id="cashFlowOwner">
+        <option value="">—</option>
+        <option value="Akiko">Akiko</option>
+        <option value="Bill">Bill</option>
+        <option value="Joint">Joint</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="cashFlowAccount">Account</label>
+      <select id="cashFlowAccount">
+        <option value="">—</option>
+        <option value="401k">401k</option>
+        <option value="403b">403b</option>
+        <option value="Broker">Broker</option>
+        <option value="Cash Management">Cash Management</option>
+        <option value="IRA">IRA</option>
+        <option value="Rollover IRA">Rollover IRA</option>
+        <option value="Roth IRA">Roth IRA</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="cashFlowTicker">Ticker</label>
+      <input type="text" id="cashFlowTicker" maxlength="20" placeholder="Optional">
+    </div>
+    <div class="form-group">
+      <label for="cashFlowNote">Note</label>
+      <input type="text" id="cashFlowNote" maxlength="200" placeholder="Optional">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <button type="submit" class="btn btn-primary">Add</button>
+    </div>
+  </form>
+  <p id="cashFlowMsg" style="font-size:0.85rem;min-height:1.25rem"></p>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Account</th>
+          <th>Ticker</th>
+          <th>Note</th>
+          <th class="text-right">Amount</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="cashFlowBody"></tbody>
     </table>
   </div>
 </div>

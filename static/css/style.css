@@ -451,10 +451,17 @@ body {
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
+.cash-flow-form {
+  grid-template-columns: 1.1fr 1fr 0.9fr 1.2fr 0.8fr 1.3fr auto;
+  align-items: end;
+  margin-bottom: 0.5rem;
+}
+
 @media (max-width: 768px) {
   .main-content { padding: 1rem; }
   .grid-2       { grid-template-columns: 1fr; }
-  .form-grid    { grid-template-columns: 1fr; }
+  .form-grid,
+  .cash-flow-form { grid-template-columns: 1fr; }
   .navbar       { padding: 0 1rem; }
   .nav-links a  { padding: .5rem .5rem; font-size: .8rem; }
   .card-value   { font-size: 1.4rem; }

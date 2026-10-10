@@ -113,4 +113,25 @@ def init_db(database_path: str | None = None):
         """
     )
     conn.commit()
+    # External deposits and withdrawals. Investment return is the change in
+    # portfolio value minus these amounts, so a deposit is not a gain.
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS cash_flows (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            flow_date     TEXT    NOT NULL,
+            amount        REAL    NOT NULL,
+            owner         TEXT    NOT NULL DEFAULT '',
+            account_type  TEXT    NOT NULL DEFAULT '',
+            ticker        TEXT    NOT NULL DEFAULT '',
+            note          TEXT    NOT NULL DEFAULT '',
+            source        TEXT    NOT NULL DEFAULT 'manual',
+            holding_id    INTEGER,
+            created_at    TEXT    NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cash_flows_date ON cash_flows(flow_date);
+        """
+    )
+    conn.commit()
     conn.close()

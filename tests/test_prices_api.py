@@ -61,7 +61,7 @@ def test_refresh_prices(client, seed_holdings):
         t.fast_info.last_price = price
         return t
 
-    with patch("portfolio.services.prices.yf.Ticker", side_effect=fake_ticker):
+    with patch("portfolio.services.prices.yf.Ticker", side_effect=fake_ticker) as mock_ticker:
         r = client.post("/api/holdings/refresh-prices")
 
     assert r.status_code == 200
@@ -69,9 +69,44 @@ def test_refresh_prices(client, seed_holdings):
     assert "updated" in body
     assert isinstance(body["updated"], list)
     assert len(body["updated"]) >= 1
+    # One Yahoo lookup per symbol, including the two DUST lots.
+    fetched = [c.args[0] for c in mock_ticker.call_args_list]
+    assert len(fetched) == len(set(fetched))
+    assert set(fetched) == {"AAPL", "VOO", "SPAXX", "DUST"}
 
-    # AAPL: 10 shares * 200 = 2000
-    holdings = {h["ticker"]: h for h in client.get("/api/holdings").get_json()}
-    # Multiple DUST rows share ticker; check AAPL specifically
+    # AAPL: 10 shares * 200 = 2000. A category the user already set is kept.
     aapl_rows = [h for h in client.get("/api/holdings").get_json() if h["ticker"] == "AAPL"]
     assert aapl_rows[0]["current_value"] == 2000.0
+    assert aapl_rows[0]["category"] == "Technology"
+
+
+def test_refresh_prices_fills_only_blank_category(client, insert_holding):
+    insert_holding(
+        ticker="MSFT", name="Microsoft", category="", shares=2,
+        current_value=100, cost_basis=80, owner="Bill", account_type="IRA",
+    )
+    insert_holding(
+        ticker="MSFT", name="Microsoft", category="Custom Bucket", shares=1,
+        current_value=50, cost_basis=40, owner="Akiko", account_type="Broker",
+    )
+
+    def fake_ticker(symbol):
+        t = MagicMock()
+        t.info = {"regularMarketPrice": 50.0, "category": "Large Blend"}
+        t.fast_info.last_price = 50.0
+        return t
+
+    with patch("portfolio.services.prices.yf.Ticker", side_effect=fake_ticker) as mock_ticker:
+        r = client.post("/api/holdings/refresh-prices")
+
+    assert r.status_code == 200
+    assert mock_ticker.call_count == 1
+    rows = {
+        h["owner"]: h
+        for h in client.get("/api/holdings").get_json()
+        if h["ticker"] == "MSFT"
+    }
+    assert rows["Bill"]["category"] == "Large Blend"
+    assert rows["Bill"]["current_value"] == 100.0
+    assert rows["Akiko"]["category"] == "Custom Bucket"
+    assert rows["Akiko"]["current_value"] == 50.0

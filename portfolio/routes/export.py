@@ -8,6 +8,8 @@ from flask import Blueprint, jsonify, request, send_file
 
 from portfolio.db import get_db
 from portfolio.services.audit import audit
+from portfolio.services.cash_flows import SOURCE_IMPORT, insert_cash_flow
+from portfolio.timezone_util import today_iso
 from portfolio.validators import VALID_TICKER, parse_float
 
 bp = Blueprint("export", __name__)
@@ -136,8 +138,9 @@ def import_csv():
 
     db = get_db()
     now = datetime.utcnow().isoformat()
+    flow_date = today_iso()
     for r in parsed_rows:
-        db.execute(
+        cur = db.execute(
             """INSERT INTO holdings
                    (name, ticker, asset_type, category, owner, account_type, shares,
                     cost_basis, current_value, purchase_date, notes, created_at, updated_at)
@@ -147,6 +150,17 @@ def import_csv():
                 r["account_type"], r["shares"], r["cost_basis"], r["current_value"],
                 r["purchase_date"], r["notes"], now, now,
             ),
+        )
+        insert_cash_flow(
+            db,
+            flow_date=flow_date,
+            amount=r["current_value"],
+            owner=r["owner"],
+            account_type=r["account_type"],
+            ticker=r["ticker"],
+            note=f"CSV import {r['name']}",
+            source=SOURCE_IMPORT,
+            holding_id=cur.lastrowid,
         )
         audit(
             "IMPORT", r["ticker"], r["name"],

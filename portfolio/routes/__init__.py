@@ -1,6 +1,7 @@
 """Register all Flask blueprints."""
 
 from portfolio.routes.audit import bp as audit_bp
+from portfolio.routes.cash_flows import bp as cash_flows_bp
 from portfolio.routes.export import bp as export_bp
 from portfolio.routes.holdings import bp as holdings_bp
 from portfolio.routes.insights import bp as insights_bp
@@ -29,3 +30,4 @@ def register_blueprints(app):
     app.register_blueprint(export_bp)
     app.register_blueprint(rmd_bp)
     app.register_blueprint(withdrawal_bp)
+    app.register_blueprint(cash_flows_bp)

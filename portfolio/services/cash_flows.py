@@ -41,7 +41,8 @@ def external_flow_from_share_change(
     """Dollars that entered or left because the share count changed.
 
     The same share count is a price or cost-basis edit, and the flow is zero.
-    Added shares are a deposit at the new price (new value / new shares).
+    A new share count with the same value is a share-count correction (the
+    value was already right), so that flow is zero too. Added shares are a deposit at the new price (new value / new shares).
     Removed shares are a withdrawal of those shares at that same new price.
     Closing the position (new shares are zero) treats the whole value change
     as external, because nothing remains to have earned a return on this edit.
@@ -51,6 +52,8 @@ def external_flow_from_share_change(
     old_value = float(old_value or 0)
     new_value = float(new_value or 0)
     if abs(new_shares - old_shares) <= _SHARE_EPS:
+        return 0.0
+    if not is_significant_value(new_value - old_value):
         return 0.0
     if abs(new_shares) <= _SHARE_EPS:
         return round(new_value - old_value, 2)

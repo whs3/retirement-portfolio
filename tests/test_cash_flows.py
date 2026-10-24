@@ -19,6 +19,12 @@ def test_price_or_cost_basis_edit_is_not_a_cash_flow():
     assert external_flow_from_share_change(10, 1500, 10, 1800) == 0
 
 
+def test_share_count_correction_with_unchanged_value_is_not_a_cash_flow():
+    # Fixing a mistyped share count while the value stays the same moves no
+    # money in or out.
+    assert external_flow_from_share_change(4400, 343190.26, 4353, 343190.26) == 0
+
+
 def test_closing_a_position_withdraws_its_last_value():
     assert external_flow_from_share_change(10, 1500, 0, 0) == -1500
 

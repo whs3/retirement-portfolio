@@ -19,16 +19,24 @@ def build_overlap() -> dict:
     - etf / mutual_fund → top holdings fetched via providers/yfinance; remainder
                           bucketed as "Other Holdings"
     - bond        → counted as-is under Bond / Fixed Income
-    - cash        → excluded
+    - cash        → excluded, along with every other row for a ticker that has
+                    at least one cash row (e.g. SPAXX sells entered as etf)
+    - funds whose holdings can't be fetched → "Unavailable" bucket, not Bond/FI
     """
     holdings_rows = get_db().execute("SELECT * FROM holdings").fetchall()
     _app_logger = get_app_logger()
 
+    cash_keys = {
+        (h["ticker"] or h["name"]).upper()
+        for h in holdings_rows
+        if h["asset_type"] == "cash"
+    }
+
     summarised: dict[str, dict] = {}  # ticker/key → {name, asset_type, value}
     for h in holdings_rows:
-        if h["asset_type"] == "cash":
-            continue
         key = (h["ticker"] or h["name"]).upper()
+        if key in cash_keys:
+            continue
         if key not in summarised:
             summarised[key] = {
                 "name": h["name"],
@@ -43,6 +51,7 @@ def build_overlap() -> dict:
     other_value = 0.0
     other_breakdown: list[dict] = []
     bond_fi_value = 0.0
+    unavailable_value = 0.0
     errors = []
 
     def _add(key: str, name: str, value: float):
@@ -86,13 +95,15 @@ def build_overlap() -> dict:
             except Exception as exc:
                 _app_logger.error("overlap %s: %s", ticker, exc)
                 errors.append({"ticker": ticker, "error": "Unable to fetch holdings data"})
-                bond_fi_value += total_value
+                unavailable_value += total_value
 
         elif asset_type == "bond":
             bond_fi_value += total_value
 
     if bond_fi_value > 0.01:
         _add("__BOND_FI__", "Bond / Fixed Income", bond_fi_value)
+    if abs(unavailable_value) > 0.01:
+        _add("__UNAVAILABLE__", "Unavailable (holdings lookup failed)", unavailable_value)
     if other_value > 0.01:
         _add("__OTHER__", "Other Holdings", other_value)
 

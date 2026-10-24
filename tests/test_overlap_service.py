@@ -102,3 +102,74 @@ def test_overlap_skips_cash(app_ctx):
     result = build_overlap()
     assert result["stocks"] == []
     assert result["total"] == 0
+
+
+def _insert(db, name, ticker, asset_type, value):
+    db.execute(
+        """INSERT INTO holdings
+           (name, ticker, asset_type, category, owner, account_type, shares,
+            cost_basis, current_value, purchase_date, notes, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            name, ticker, asset_type, "", "Bill", "IRA",
+            1, value, value, "2024-01-01", "", "2024-01-01", "2024-01-01",
+        ),
+    )
+
+
+def test_overlap_failed_lookup_goes_to_unavailable_not_bond(app_ctx):
+    db = get_db()
+    _insert(db, "Some Equity ETF", "VTV", "etf", 1000)
+    db.commit()
+
+    with patch(
+        "portfolio.services.overlap.get_etf_holdings",
+        side_effect=ValueError("boom"),
+    ):
+        result = build_overlap()
+
+    by_ticker = {s["ticker"]: s for s in result["stocks"]}
+    assert "__BOND_FI__" not in by_ticker
+    assert by_ticker["__UNAVAILABLE__"]["value"] == 1000
+    assert result["errors"] == [{"ticker": "VTV", "error": "Unable to fetch holdings data"}]
+
+
+def test_overlap_skips_non_cash_rows_of_cash_ticker(app_ctx):
+    db = get_db()
+    _insert(db, "Cash", "SPAXX", "cash", 500)
+    _insert(db, "Cash sell", "SPAXX", "etf", -200)
+    db.commit()
+
+    with patch("portfolio.services.overlap.get_etf_holdings") as mock_etf:
+        result = build_overlap()
+        mock_etf.assert_not_called()
+
+    assert result["stocks"] == []
+    assert result["errors"] == []
+
+
+def test_overlap_treasury_bill_etf_is_bond(app_ctx):
+    db = get_db()
+    _insert(db, "0-3 Month Treasury", "SGOV", "etf", 750)
+    db.commit()
+
+    with patch("portfolio.services.overlap.get_etf_holdings") as mock_etf:
+        result = build_overlap()
+        mock_etf.assert_not_called()
+
+    assert result["stocks"][0]["ticker"] == "__BOND_FI__"
+    assert result["stocks"][0]["value"] == 750
+
+
+def test_get_etf_holdings_falls_back_when_provider_fails():
+    from portfolio.services import etf_holdings
+
+    fallback = [{"symbol": "AAPL", "name": "Apple", "weight": 0.07}]
+    with patch.dict(
+        etf_holdings._PROVIDER_FETCHERS,
+        {"vanguard": lambda t: (_ for _ in ()).throw(ValueError("404"))},
+    ), patch.object(etf_holdings, "_get_etf_holdings_yfinance", return_value=fallback):
+        holdings, source = etf_holdings.get_etf_holdings("VOO", fmp_api_key="")
+
+    assert source == "yfinance"
+    assert holdings == fallback

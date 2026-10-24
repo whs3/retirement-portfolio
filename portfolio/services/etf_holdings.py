@@ -13,6 +13,8 @@ BOND_ETF_TICKERS = frozenset({
     "SPAB", "SPSB", "SPIB", "SPLB", "SPTI", "SPTL",
     "AGG", "SHY", "IEF", "TLT", "LQD", "HYG", "JNK", "MUB", "TIP",
     "SCHZ", "SCHI",
+    # Treasury bill / ultra-short Treasury ETFs
+    "SGOV", "BIL", "USFR", "TFLO", "SHV", "TBIL", "BILS", "CLTL",
 })
 
 # Ticker → provider map for known ETFs
@@ -205,13 +207,19 @@ def get_etf_holdings(ticker: str, fmp_api_key: str | None = None) -> tuple[list[
       1. Known provider (Vanguard / SSGA / Invesco) — full holdings, free
       2. FMP — full holdings if paid key present
       3. yfinance — top-N holdings fallback
+
+    A failing provider falls through to the next source rather than raising,
+    since provider endpoints are undocumented and change without notice.
     """
     if fmp_api_key is None:
         fmp_api_key = get_fmp_api_key()
 
     provider = TICKER_PROVIDER.get(ticker)
     if provider:
-        return _PROVIDER_FETCHERS[provider](ticker), provider
+        try:
+            return _PROVIDER_FETCHERS[provider](ticker), provider
+        except Exception:
+            pass
 
     if fmp_api_key:
         try:

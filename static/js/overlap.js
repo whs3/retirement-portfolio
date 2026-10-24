@@ -16,6 +16,16 @@ function fmt(n) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 }
 
+const BUCKET_LABELS = {
+  __OTHER__:       'Other',
+  __BOND_FI__:     'Bond/FI',
+  __UNAVAILABLE__: 'Unavailable',
+};
+
+function bucketLabel(ticker) {
+  return BUCKET_LABELS[ticker] ?? ticker;
+}
+
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -76,9 +86,9 @@ function renderResults(data) {
   const { stocks, total, errors } = data;
 
   // Summary cards
-  const equityStocks = stocks.filter(s => s.ticker !== '__OTHER__' && s.ticker !== '__BOND_FI__');
+  const equityStocks = stocks.filter(s => !(Object.hasOwn(BUCKET_LABELS, s.ticker)));
   const top1 = equityStocks[0] ?? stocks[0];
-  const top1ticker = top1 ? (top1.ticker === '__OTHER__' ? top1.name : top1.ticker) : '—';
+  const top1ticker = top1 ? bucketLabel(top1.ticker) : '—';
   const top1label  = top1 ? top1.percentage.toFixed(2) + '%' : '';
   const errColor   = errors.length ? 'var(--danger)' : 'var(--success)';
 
@@ -119,7 +129,7 @@ function renderResults(data) {
   const rest  = stocks.slice(TOP_N);
   const restValue = rest.reduce((s, r) => s + r.value, 0);
 
-  const labels = top.map(s => s.ticker === '__OTHER__' ? 'Other' : s.ticker === '__BOND_FI__' ? 'Bond/FI' : s.ticker);
+  const labels = top.map(s => bucketLabel(s.ticker));
   const values = top.map(s => s.value);
   const colors = top.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
 
@@ -156,7 +166,7 @@ function renderResults(data) {
     <div style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;font-size:0.88rem">
       <span style="width:12px;height:12px;border-radius:2px;background:${colors[i]};flex-shrink:0"></span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.name)}">
-        <strong>${esc(s.ticker === '__OTHER__' ? 'Other' : s.ticker === '__BOND_FI__' ? 'Bond/FI' : s.ticker)}</strong> ${esc(s.name)}
+        <strong>${esc(bucketLabel(s.ticker))}</strong> ${esc(s.name)}
       </span>
       <span style="white-space:nowrap;color:var(--text-muted)">${s.percentage.toFixed(2)}%</span>
     </div>`).join('');
@@ -214,7 +224,7 @@ function renderTable(query) {
   }
 
   tbody.innerHTML = filtered.map((s, i) => {
-    const label = s.ticker === '__OTHER__' ? '—' : s.ticker === '__BOND_FI__' ? '—' : esc(s.ticker);
+    const label = Object.hasOwn(BUCKET_LABELS, s.ticker) ? '—' : esc(s.ticker);
     return `<tr>
       <td class="text-muted">${i + 1}</td>
       <td><strong>${label}</strong></td>

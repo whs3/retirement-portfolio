@@ -9,6 +9,7 @@ import pandas as pd
 from portfolio.db import get_db
 from portfolio.services.snapshots import (
     backfill_once,
+    backfill_prices_once,
     capture_snapshot,
     get_performance_history,
 )
@@ -233,7 +234,7 @@ def test_get_performance_history_shape_from_snapshots_no_network(app_ctx):
     assert result["summary"]["trough_value"] == 1000
     assert result["holdings_series"] == [
         {"ticker": "AAPL", "name": "Apple Inc.", "category": "Technology",
-         "values": [1000, 1100, 1200]}
+         "values": [1000, 1100, 1200], "prices": [None, None, None]}
     ]
     assert result["categories_series"] == [
         {"category": "Technology", "values": [1000, 1100, 1200]}
@@ -279,7 +280,7 @@ def test_sold_ticker_is_zero_instead_of_carried_forward(app_ctx):
     result = get_performance_history()
     assert result["holdings_series"] == [
         {"ticker": "AAPL", "name": "Apple Inc.", "category": "Technology",
-         "values": [1000, 0]}
+         "values": [1000, 0], "prices": [None, None]}
     ]
     assert result["categories_series"] == [
         {"category": "Technology", "values": [1000, 0]}
@@ -341,3 +342,112 @@ def test_deposit_between_snapshots_counts_on_the_next_snapshot(app_ctx):
     summary = get_performance_history()["summary"]
     assert summary["gain"] == 100
     assert summary["gain_pct"] == 10
+
+
+def test_capture_snapshot_records_shares_and_price(app_ctx):
+    db = get_db()
+    _insert(db, shares=10, current_value=1500)
+    _insert(db, shares=-4, cost_basis=-400, current_value=-600)  # partial sale
+
+    capture_snapshot()
+
+    row = db.execute("SELECT holdings_json FROM portfolio_snapshots").fetchone()
+    aapl = json.loads(row["holdings_json"])["AAPL"]
+    assert aapl["shares"] == 6
+    assert aapl["price"] == 150
+
+
+def test_capture_snapshot_skips_price_when_a_lot_has_no_share_count(app_ctx):
+    db = get_db()
+    _insert(db, shares=10, current_value=1500)
+    _insert(db, shares=0, current_value=500)
+
+    capture_snapshot()
+
+    row = db.execute("SELECT holdings_json FROM portfolio_snapshots").fetchone()
+    aapl = json.loads(row["holdings_json"])["AAPL"]
+    assert aapl["value"] == 2000
+    assert "price" not in aapl
+
+
+def test_holdings_series_prices_ignore_a_purchase(app_ctx):
+    # Doubling the position doubles the value, but the price only moved 1%.
+    db = get_db()
+    _insert_snapshot(
+        db, "2026-10-13", 1000,
+        {"VOO": {"name": "VOO", "value": 1000, "category": "Large Blend",
+                 "shares": 2, "price": 500}},
+        {"Large Blend": 1000},
+    )
+    _insert_snapshot(
+        db, "2026-10-14", 2020,
+        {"VOO": {"name": "VOO", "value": 2020, "category": "Large Blend",
+                 "shares": 4, "price": 505}},
+        {"Large Blend": 2020},
+    )
+    with patch("portfolio.services.snapshots.now_local",
+               return_value=datetime(2026, 10, 15)):
+        result = get_performance_history()
+    (voo,) = result["holdings_series"]
+    assert voo["values"] == [1000, 2020]
+    assert voo["prices"] == [500, 505]
+
+
+def _closes(rows):
+    idx = pd.to_datetime([d for d, _ in rows])
+    return pd.DataFrame([r for _, r in rows], index=idx)
+
+
+def test_backfill_prices_uses_the_last_close_on_or_before_each_day(app_ctx):
+    db = get_db()
+    _insert_snapshot(
+        db, "2026-10-09", 1000,
+        {"VOO": {"name": "VOO", "value": 1000, "category": "Large Blend"}}, {},
+    )
+    # Saturday: no trading, so Friday's close applies.
+    _insert_snapshot(
+        db, "2026-10-10", 1000,
+        {"VOO": {"name": "VOO", "value": 1000, "category": "Large Blend"},
+         "NOPE": {"name": "No history", "value": 50, "category": "Other"}}, {},
+    )
+    # Already has a captured price; must be left alone.
+    _insert_snapshot(
+        db, "2026-10-13", 1010,
+        {"VOO": {"name": "VOO", "value": 1010, "category": "Large Blend",
+                 "shares": 2, "price": 505}}, {},
+    )
+    closes = _closes([("2026-10-08", {"VOO": 498.0}), ("2026-10-09", {"VOO": 500.0})])
+
+    with patch("portfolio.services.snapshots._fetch_closes", return_value=closes) as fetch:
+        backfill_prices_once()
+        fetch.assert_called_once()
+        assert sorted(fetch.call_args.args[0]) == ["NOPE", "VOO"]
+
+    by_date = {
+        r["date"]: json.loads(r["holdings_json"])
+        for r in db.execute("SELECT date, holdings_json FROM portfolio_snapshots")
+    }
+    assert by_date["2026-10-09"]["VOO"]["price"] == 500
+    assert by_date["2026-10-10"]["VOO"]["price"] == 500
+    assert "price" not in by_date["2026-10-10"]["NOPE"]
+    assert by_date["2026-10-13"]["VOO"]["price"] == 505
+
+    with patch("portfolio.services.snapshots._fetch_closes") as fetch:
+        backfill_prices_once()
+        fetch.assert_not_called()
+
+
+def test_backfill_prices_retries_when_yfinance_returns_nothing(app_ctx):
+    db = get_db()
+    _insert_snapshot(
+        db, "2026-10-09", 1000,
+        {"VOO": {"name": "VOO", "value": 1000, "category": "Large Blend"}}, {},
+    )
+    with patch("portfolio.services.snapshots._fetch_closes", return_value=pd.DataFrame()):
+        backfill_prices_once()
+    with patch("portfolio.services.snapshots._fetch_closes",
+               return_value=_closes([("2026-10-09", {"VOO": 500.0})])) as fetch:
+        backfill_prices_once()
+        fetch.assert_called_once()
+    row = db.execute("SELECT holdings_json FROM portfolio_snapshots").fetchone()
+    assert json.loads(row["holdings_json"])["VOO"]["price"] == 500

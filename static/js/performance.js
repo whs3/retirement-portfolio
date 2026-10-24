@@ -183,7 +183,11 @@ function _slicePerfData(data, period) {
     ...data,
     dates:           dates.slice(idx),
     values:          data.values.slice(idx),
-    holdings_series:   (data.holdings_series   || []).map(h => ({ ...h, values: h.values.slice(idx) })),
+    holdings_series:   (data.holdings_series   || []).map(h => ({
+      ...h,
+      values: h.values.slice(idx),
+      prices: (h.prices || []).slice(idx),
+    })),
     categories_series: (data.categories_series || []).map(c => ({ ...c, values: c.values.slice(idx) })),
   };
 }
@@ -580,17 +584,33 @@ function renderHoldingsChart(dates, holdingsSeries) {
     if (!seenMonths.has(ym)) { seenMonths.add(ym); monthStarts.add(d); }
   }
 
-  // Drop closed/dust series (base ~0 charts as ±100% noise) and sort by
-  // end-of-period % change (highest first) before assigning colors so tooltip
-  // order and line colors stay in sync without Chart.js itemSort.
+  // Each line is % change in per-share price from the first day the holding
+  // is held in the period, so buying or selling shares is not drawn as a gain
+  // or loss, and a holding bought mid-period still appears. Days not held are
+  // null. A holding with no stored price on its first day falls back to value.
   const isSignificant = v => Math.abs(Math.round(Number(v) * 100) / 100) > 0.01;
-  const chartable = holdingsSeries.filter(h => {
-    if (!h.values || !h.values.length) return false;
-    const base = h.values[0];
-    const last = h.values[h.values.length - 1];
-    // Need a real starting value to normalize % change; skip zeroed positions.
-    return isSignificant(base) && isSignificant(last);
-  });
+  const chartable = [];
+  for (const h of holdingsSeries) {
+    if (!h.values || !h.values.length) continue;
+    // Closed by the end of the period: leave it off, as before.
+    if (!isSignificant(h.values[h.values.length - 1])) continue;
+    const start = h.values.findIndex(isSignificant);
+    if (start === -1) continue;
+    const prices  = h.prices || [];
+    const usePrice = prices[start] != null && prices[start] > 0;
+    const basis   = usePrice ? prices : h.values;
+    const base    = basis[start];
+    const pct = h.values.map((v, i) => {
+      if (i < start || !isSignificant(v) || basis[i] == null) return null;
+      return +((basis[i] - base) / base * 100).toFixed(4);
+    });
+    let last = null;
+    for (let i = pct.length - 1; i >= 0; i--) {
+      if (pct[i] != null) { last = pct[i]; break; }
+    }
+    if (last == null) continue;
+    chartable.push({ ticker: h.ticker, pct, last });
+  }
 
   if (!chartable.length) {
     card.style.display = 'none';
@@ -598,17 +618,16 @@ function renderHoldingsChart(dates, holdingsSeries) {
     return;
   }
 
-  const sortedSeries = [...chartable].sort((a, b) => {
-    const aPct = a.values[0] ? (a.values[a.values.length - 1] - a.values[0]) / a.values[0] : 0;
-    const bPct = b.values[0] ? (b.values[b.values.length - 1] - b.values[0]) / b.values[0] : 0;
-    return bPct - aPct;
-  });
+  // Sort by end-of-period % change (highest first) before assigning colors so
+  // tooltip order and line colors stay in sync without Chart.js itemSort.
+  const sortedSeries = [...chartable].sort((a, b) => b.last - a.last);
 
   const datasets = sortedSeries.map((h, i) => {
-    const base = h.values[0];
     return {
       label:            h.ticker,
-      data:             h.values.map(v => +((v - base) / base * 100).toFixed(4)),
+      data:             h.pct,
+      lastPct:          h.last,
+      spanGaps:         true,
       borderColor:      HOLDING_COLORS[i % HOLDING_COLORS.length],
       borderWidth:      1.5,
       backgroundColor:  'transparent',
@@ -660,7 +679,7 @@ function renderHoldingsChart(dates, holdingsSeries) {
           labels: {
             generateLabels(chart) {
               return chart.data.datasets.map((ds, i) => {
-                const last = ds.data[ds.data.length - 1];
+                const last = ds.lastPct;
                 const sign = last >= 0 ? '+' : '';
                 return {
                   text:        `${ds.label} (${sign}${last.toFixed(2)}%)`,
@@ -675,6 +694,8 @@ function renderHoldingsChart(dates, holdingsSeries) {
           },
         },
         tooltip: {
+          // Days before a holding was bought are null; leave them out.
+          filter: item => item.parsed.y != null,
           callbacks: {
             title:      ctx => ctx[0].label,
             label:      ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y.toFixed(2)}%`,

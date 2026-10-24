@@ -12,11 +12,16 @@ import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+import pandas as pd
+import yfinance as yf
+
 from portfolio.db import get_db
 from portfolio.services.cash_flows import list_cash_flows, period_return
 from portfolio.services.performance import build_performance
 from portfolio.timezone_util import now_iso, now_local, today_iso
 from portfolio.validators import NEGLIGIBLE_VALUE, is_significant_value
+
+_SHARE_EPS = 1e-6
 
 
 def owner_accounts_from_holdings(holdings_rows) -> dict:
@@ -60,6 +65,9 @@ def capture_snapshot() -> None:
             cash_tickers.add(t)
 
     value_by_ticker: dict[str, float] = {}
+    shares_by_ticker: dict[str, float] = {}
+    # A lot with value but no share count makes value / shares meaningless.
+    unknown_shares: set[str] = set()
     name_by_ticker: dict[str, str] = {}
     asset_type_by_ticker: dict[str, str] = {}
     category_by_ticker: dict[str, str] = {}
@@ -71,6 +79,9 @@ def capture_snapshot() -> None:
             untracked_value += h["current_value"]
             continue
         value_by_ticker[ticker] = value_by_ticker.get(ticker, 0.0) + h["current_value"]
+        shares_by_ticker[ticker] = shares_by_ticker.get(ticker, 0.0) + (h["shares"] or 0.0)
+        if not h["shares"] and is_significant_value(h["current_value"] or 0.0):
+            unknown_shares.add(ticker)
         name_by_ticker.setdefault(ticker, h["name"] or ticker)
         asset_type_by_ticker.setdefault(ticker, h["asset_type"] or "")
         if h["category"]:
@@ -88,6 +99,10 @@ def capture_snapshot() -> None:
             "asset_type": asset_type_by_ticker.get(ticker, ""),
             "category": category,
         }
+        shares = shares_by_ticker.get(ticker, 0.0)
+        if ticker not in unknown_shares and abs(shares) > _SHARE_EPS:
+            holdings_json[ticker]["shares"] = round(shares, 6)
+            holdings_json[ticker]["price"] = round(value / shares, 4)
         category_json[category] = category_json.get(category, 0.0) + round(value, 2)
 
     today = today_iso()
@@ -195,6 +210,101 @@ def backfill_once() -> None:
     capture_snapshot()
 
 
+_PRICE_BACKFILL_MARKER_KEY = "snapshot_prices_backfilled_at"
+
+
+def _fetch_closes(tickers: list[str], start: str, end: str) -> pd.DataFrame:
+    """Unadjusted daily closes (index=date, columns=tickers) from yfinance.
+
+    Unadjusted so they line up with the live regularMarketPrice that
+    capture_snapshot() records from then on.
+    """
+    raw = yf.download(
+        tickers,
+        start=start,
+        end=end,
+        auto_adjust=False,
+        progress=False,
+        multi_level_index=True,
+    )
+    if raw.empty:
+        return pd.DataFrame()
+    return raw["Close"]
+
+
+def backfill_prices_once() -> None:
+    """Add a per-ticker ``price`` to snapshots captured before prices were stored.
+
+    The Individual Holdings chart plots price change so that buying or selling
+    shares is not drawn as performance. Rows from before that change only have
+    values, so their price comes from that day's close (or the last close
+    before a weekend or holiday). Runs once, gated on a settings marker; if
+    yfinance returns nothing the marker is not set and the next request retries.
+    Tickers yfinance has no history for keep no price, and the chart falls
+    back to value for them.
+    """
+    db = get_db()
+    if db.execute(
+        "SELECT 1 FROM settings WHERE key = ?", (_PRICE_BACKFILL_MARKER_KEY,)
+    ).fetchone():
+        return
+
+    rows = db.execute(
+        "SELECT date, holdings_json FROM portfolio_snapshots ORDER BY date"
+    ).fetchall()
+    pending: list[tuple[str, dict]] = []
+    tickers: set[str] = set()
+    for r in rows:
+        hj = json.loads(r["holdings_json"] or "{}")
+        missing = [t for t, info in hj.items() if "price" not in info]
+        if missing:
+            pending.append((r["date"], hj))
+            tickers.update(missing)
+
+    if pending:
+        start = (
+            datetime.strptime(pending[0][0], "%Y-%m-%d") - timedelta(days=7)
+        ).strftime("%Y-%m-%d")
+        end = (
+            datetime.strptime(pending[-1][0], "%Y-%m-%d") + timedelta(days=1)
+        ).strftime("%Y-%m-%d")
+        try:
+            close = _fetch_closes(sorted(tickers), start, end)
+        except Exception:
+            return
+        if close.empty:
+            return
+        close = close.ffill()
+        close.index = pd.to_datetime(close.index).strftime("%Y-%m-%d")
+
+        for date, hj in pending:
+            on_or_before = close[close.index <= date]
+            if on_or_before.empty:
+                continue
+            day = on_or_before.iloc[-1]
+            changed = False
+            for ticker, info in hj.items():
+                if "price" in info or ticker not in day.index:
+                    continue
+                price = day[ticker]
+                if pd.isna(price) or price <= 0:
+                    continue
+                info["price"] = round(float(price), 4)
+                changed = True
+            if changed:
+                db.execute(
+                    "UPDATE portfolio_snapshots SET holdings_json = ? WHERE date = ?",
+                    (json.dumps(hj), date),
+                )
+
+    db.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (_PRICE_BACKFILL_MARKER_KEY, now_iso()),
+    )
+    db.commit()
+
+
 def get_performance_history(days: int = 365) -> dict:
     """Read stored snapshots and reshape them for the Performance page.
 
@@ -233,6 +343,7 @@ def get_performance_history(days: int = 365) -> dict:
     holdings_series = []
     for ticker in all_tickers:
         series: list[float] = []
+        prices: list[float | None] = []
         name = ticker
         category = "Uncategorized"
         for hj in per_row_holdings:
@@ -241,10 +352,12 @@ def get_performance_history(days: int = 365) -> dict:
                 name = info.get("name", name)
                 category = info.get("category") or category
                 series.append(round(info["value"], 2))
+                prices.append(info.get("price"))
             else:
                 # Absent means sold or not yet held. Carrying the previous
                 # value forward kept closed positions on the chart forever.
                 series.append(0.0)
+                prices.append(None)
         if not series or max(abs(v) for v in series) <= NEGLIGIBLE_VALUE:
             continue
         holdings_series.append({
@@ -252,6 +365,9 @@ def get_performance_history(days: int = 365) -> dict:
             "name": name,
             "category": category,
             "values": series,
+            # Per-share price on days held, else None. The holdings chart uses
+            # it so trades are not drawn as gains or losses.
+            "prices": prices,
         })
     holdings_series.sort(key=lambda x: x["values"][-1] if x["values"] else 0, reverse=True)
 

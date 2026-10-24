@@ -268,6 +268,23 @@ body {
 .badge-sell         { background: #fee2e2; color: #b91c1c; }
 .badge-hold         { background: #f1f5f9; color: #475569; }
 
+.where-cell { font-size: .8rem; line-height: 1.4; min-width: 12rem; }
+.drift-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .75rem;
+  margin-bottom: 1rem;
+  font-size: .875rem;
+}
+.drift-setting input {
+  width: 5.5rem;
+  padding: .4rem .6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
@@ -305,6 +322,8 @@ body {
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
+
+.form-grid.planning-assumptions { grid-template-columns: repeat(3, 1fr); }
 
 .form-group          { display: flex; flex-direction: column; gap: .375rem; }
 .form-group-full     { grid-column: 1 / -1; }
@@ -461,6 +480,7 @@ body {
   .main-content { padding: 1rem; }
   .grid-2       { grid-template-columns: 1fr; }
   .form-grid,
+  .form-grid.planning-assumptions,
   .cash-flow-form { grid-template-columns: 1fr; }
   .navbar       { padding: 0 1rem; }
   .nav-links a  { padding: .5rem .5rem; font-size: .8rem; }

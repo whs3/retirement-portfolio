@@ -95,15 +95,36 @@ async function loadSummary() {
   }
 }
 
-const DRIFT_THRESHOLD_PTS = 5;
+function driftSuggestion(r) {
+  if (r.action === 'Sell' && r.trades && r.trades.length) {
+    const t = r.trades[0];
+    const label = t.ticker || t.name || 'this holding';
+    const where = [t.owner, t.account_type].filter(Boolean).join("'s ");
+    return `selling ${label}${where ? ' in ' + where : ''}`;
+  }
+  if (r.action === 'Buy') {
+    const held = (r.positions || []).find(p => p.current_value > 0);
+    if (held) {
+      const label = held.ticker || held.name || 'this category';
+      return `buying into an account that already holds ${label}`;
+    }
+  }
+  return r.action === 'Sell' ? 'selling' : 'buying';
+}
 
 async function loadDriftAlerts() {
   const box  = document.getElementById('driftAlerts');
   const list = document.getElementById('driftAlertsList');
   try {
     const data = await apiFetch('/api/rebalance');
+    const threshold = Number(data.drift_threshold_pts);
+    const title = document.getElementById('driftAlertsTitle');
+    if (title && Number.isFinite(threshold)) {
+      const shown = Number.isInteger(threshold) ? String(threshold) : threshold.toFixed(1);
+      title.textContent = `Off target by ${shown} points or more:`;
+    }
     const drifted = (data.recommendations || [])
-      .filter(r => r.target_pct > 0 && Math.abs(r.current_pct - r.target_pct) >= DRIFT_THRESHOLD_PTS)
+      .filter(r => r.target_pct > 0 && (r.action === 'Buy' || r.action === 'Sell'))
       .sort((a, b) => Math.abs(b.current_pct - b.target_pct) - Math.abs(a.current_pct - a.target_pct));
 
     if (!drifted.length) {
@@ -115,10 +136,10 @@ async function loadDriftAlerts() {
       const diff       = r.current_pct - r.target_pct;
       const isOver     = diff > 0;
       const direction  = isOver ? 'over' : 'under';
-      const suggestion = isOver ? 'selling' : 'buying';
+      const suggestion = driftSuggestion(r);
       return `<p class="drift-alert-item">
         <strong>${esc(r.category)}</strong> is ${Math.abs(diff).toFixed(1)} pts ${direction} target
-        (${r.current_pct.toFixed(1)}% vs ${r.target_pct.toFixed(1)}% target) — consider ${suggestion}.
+        (${r.current_pct.toFixed(1)}% vs ${r.target_pct.toFixed(1)}% target) — consider ${esc(suggestion)}.
       </p>`;
     }).join('');
     box.style.display = 'block';

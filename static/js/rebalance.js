@@ -10,6 +10,7 @@ function esc(s) {
 }
 
 let rebalanceChart = null;
+let driftSaveTimer = null;
 
 function fmt(n) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -100,12 +101,79 @@ async function saveAllocations(event) {
 
 // ── Rebalance chart + recommendations ────────────────────────────────────────
 
+function whereToTrade(r) {
+  if (r.action === 'Hold') return '<span class="text-muted">—</span>';
+
+  const lines = [];
+  (r.trades || []).forEach(t => {
+    const label = t.ticker || t.name || 'Holding';
+    const where = [t.owner, t.account_type].filter(Boolean).join(' · ');
+    lines.push(`<div>Sell ${fmt(t.amount)} ${esc(label)}${where ? ' in ' + esc(where) : ''}</div>`);
+  });
+
+  if (r.action === 'Buy') {
+    const held = (r.positions || []).filter(p => p.current_value > 0);
+    if (!held.length) {
+      lines.push('<div class="text-muted">No holding in this category yet.</div>');
+    } else {
+      held.forEach(p => {
+        const label = p.ticker || p.name || 'Holding';
+        const where = [p.owner, p.account_type].filter(Boolean).join(' · ');
+        lines.push(`<div>${esc(label)}${where ? ' · ' + esc(where) : ''} (${fmt(p.current_value)})</div>`);
+      });
+      lines.push('<div class="text-muted">Add to one of these accounts.</div>');
+    }
+  }
+
+  if (r.action === 'Sell') {
+    const traded = new Set((r.trades || []).map(t => `${t.ticker}|${t.owner}|${t.account_type}`));
+    const rest = (r.positions || []).filter(p =>
+      p.current_value > 0 && !traded.has(`${p.ticker}|${p.owner}|${p.account_type}`)
+    );
+    if (rest.length) {
+      const names = rest.map(p => {
+        const label = p.ticker || p.name || 'Holding';
+        const where = [p.owner, p.account_type].filter(Boolean).join(' ');
+        return `${label}${where ? ' (' + where + ')' : ''}`;
+      });
+      lines.push(`<div class="text-muted">Also held: ${esc(names.join('; '))}</div>`);
+    }
+  }
+
+  if (r.action === 'Sell' && r.note) lines.push(`<div class="text-muted">${esc(r.note)}</div>`);
+  return `<div class="where-cell">${lines.join('') || '<span class="text-muted">—</span>'}</div>`;
+}
+
 async function loadRebalance() {
   const res  = await fetch('/api/rebalance');
   const data = await res.json();
+  const input = document.getElementById('driftThreshold');
+  if (input && document.activeElement !== input && data.drift_threshold_pts != null) {
+    input.value = data.drift_threshold_pts;
+  }
   const recs = data.recommendations.filter(r => r.target_pct !== 0);
   renderRebalanceChart(recs);
   renderRecommendations(recs, data.total_value);
+}
+
+function queueDriftSave() {
+  const status = document.getElementById('driftStatus');
+  clearTimeout(driftSaveTimer);
+  driftSaveTimer = setTimeout(async () => {
+    const raw = document.getElementById('driftThreshold').value;
+    if (status) status.textContent = 'Saving…';
+    try {
+      await apiFetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ drift_threshold_pts: raw }),
+      });
+      if (status) status.textContent = 'Saved.';
+      loadRebalance();
+    } catch (err) {
+      if (status) status.textContent = err.message || 'Save failed.';
+    }
+  }, 400);
 }
 
 function renderRebalanceChart(recs) {
@@ -156,7 +224,7 @@ function renderRecommendations(recs, totalValue) {
   const tbody = document.getElementById('recommendationsBody');
 
   if (!recs.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No data — add holdings first.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No data — add holdings first.</td></tr>';
     return;
   }
 
@@ -166,7 +234,7 @@ function renderRecommendations(recs, totalValue) {
     const dispCurrentPct = parseFloat(r.current_pct.toFixed(2));
     const dispTargetPct  = parseFloat(r.target_pct.toFixed(2));
     const diff           = totalValue * (dispTargetPct - dispCurrentPct) / 100;
-    const diffCls        = diff > 1 ? 'text-success' : diff < -1 ? 'text-danger' : '';
+    const diffCls        = r.action === 'Buy' ? 'text-success' : r.action === 'Sell' ? 'text-danger' : '';
     const targetVal      = totalValue * dispTargetPct / 100;
     return `
     <tr>
@@ -177,6 +245,7 @@ function renderRecommendations(recs, totalValue) {
       <td class="text-right">${fmt(targetVal)}</td>
       <td class="text-right ${diffCls}">${diff >= 0 ? '+' : ''}${fmt(diff)}</td>
       <td class="text-center"><span class="badge badge-${r.action.toLowerCase()}">${r.action}</span></td>
+      <td>${whereToTrade(r)}</td>
     </tr>`;
   }).join('');
 }
@@ -184,4 +253,6 @@ function renderRecommendations(recs, totalValue) {
 document.addEventListener('DOMContentLoaded', () => {
   loadTargetAllocations();
   loadRebalance();
+  const driftInput = document.getElementById('driftThreshold');
+  if (driftInput) driftInput.addEventListener('input', queueDriftSave);
 });

@@ -3,6 +3,8 @@
 from flask import Blueprint, jsonify, request
 
 from portfolio.db import get_db
+from portfolio.services.rebalance import build_recommendations
+from portfolio.services.settings import get_drift_threshold_pts
 from portfolio.validators import is_significant_value
 
 bp = Blueprint("portfolio_api", __name__)
@@ -132,36 +134,6 @@ def get_rebalance():
     db = get_db()
     holdings = db.execute("SELECT * FROM holdings").fetchall()
     targets = db.execute("SELECT * FROM target_allocations").fetchall()
-
-    total_value = sum(h["current_value"] for h in holdings)
-
-    current: dict[str, float] = {}
-    for h in holdings:
-        cat = h["category"] or "Uncategorized"
-        current.setdefault(cat, 0)
-        current[cat] += h["current_value"]
-
-    target_map = {t["category"]: t["target_percentage"] for t in targets}
-    all_cats = set(current) | set(target_map)
-
-    recommendations = []
-    for cat in all_cats:
-        target_pct = target_map.get(cat, 0)
-        curr_val = current.get(cat, 0)
-        curr_pct = (curr_val / total_value * 100) if total_value else 0
-        target_val = total_value * target_pct / 100
-        diff = target_val - curr_val
-        recommendations.append({
-            "category": cat,
-            "current_value": curr_val,
-            "current_pct": curr_pct,
-            "target_pct": target_pct,
-            "target_value": target_val,
-            "difference": diff,
-            "action": "Buy" if diff > 1 else "Sell" if diff < -1 else "Hold",
-        })
-
-    return jsonify({
-        "total_value": total_value,
-        "recommendations": sorted(recommendations, key=lambda x: x["category"]),
-    })
+    return jsonify(build_recommendations(
+        holdings, targets, get_drift_threshold_pts()
+    ))

@@ -95,13 +95,19 @@ def test_rebalance_actions(client, seed_holdings):
     assert data["total_value"] > 0
     recs = {row["category"]: row for row in data["recommendations"]}
 
+    assert data["drift_threshold_pts"] == 5.0
+
     # Technology current ≈ 2000.005 / 10600 ≈ 18.9% vs target 40% → Buy
     assert recs["Technology"]["action"] == "Buy"
     assert recs["Technology"]["difference"] > 1
+    assert recs["Technology"]["trades"] == []
+    assert any(p["ticker"] == "AAPL" and p["account_type"] == "IRA" for p in recs["Technology"]["positions"])
 
     # Treasury current 5100 / 10600 ≈ 48% vs target 20% → Sell
     assert recs["Treasury"]["action"] == "Sell"
     assert recs["Treasury"]["difference"] < -1
+    assert recs["Treasury"]["trades"][0]["account_type"] == "Broker"
+    assert recs["Treasury"]["trades"][0]["owner"] == "Joint"
 
     # Each recommendation has expected fields
     for row in data["recommendations"]:
@@ -117,7 +123,7 @@ def test_rebalance_actions(client, seed_holdings):
 
 
 def test_rebalance_hold_when_close(client, insert_holding, app):
-    """When current matches target within $1, action is Hold."""
+    """When current already matches the target, action is Hold."""
     # Single category portfolio with 100% target
     insert_holding(
         name="Only",
@@ -136,3 +142,71 @@ def test_rebalance_hold_when_close(client, insert_holding, app):
     tech = next(r for r in recs if r["category"] == "Technology")
     assert tech["action"] == "Hold"
     assert abs(tech["difference"]) <= 1
+
+
+def test_drift_threshold_is_a_setting(client, insert_holding):
+    """A one-point gap is Hold at the default of 5, and a trade when the user sets 1."""
+    insert_holding(
+        name="Tech", ticker="AAA", category="Technology", account_type="IRA",
+        current_value=9600, shares=96, cost_basis=9600,
+    )
+    insert_holding(
+        name="Cash", ticker="BIL", category="Cash", account_type="Broker",
+        asset_type="etf", current_value=400, shares=4, cost_basis=400,
+    )
+    client.put("/api/allocations", json=[
+        {"category": "Technology", "target_percentage": 95},
+        {"category": "Cash", "target_percentage": 5},
+    ])
+
+    data = client.get("/api/rebalance").get_json()
+    assert data["drift_threshold_pts"] == 5
+    recs = {row["category"]: row for row in data["recommendations"]}
+    assert recs["Technology"]["action"] == "Hold"
+    assert abs(recs["Technology"]["difference"]) > 1
+
+    saved = client.put("/api/settings", json={"drift_threshold_pts": 1})
+    assert saved.status_code == 200
+    data = client.get("/api/rebalance").get_json()
+    assert data["drift_threshold_pts"] == 1
+    recs = {row["category"]: row for row in data["recommendations"]}
+    assert recs["Technology"]["action"] == "Sell"
+    assert recs["Cash"]["action"] == "Buy"
+
+
+def test_sell_fills_taxable_accounts_before_roth_and_ira(client, insert_holding):
+    insert_holding(
+        name="Broker lot", ticker="AAPL", category="Technology",
+        owner="Bill", account_type="Broker", current_value=2000, shares=20, cost_basis=2000,
+    )
+    insert_holding(
+        name="Cash lot", ticker="AAPL", category="Technology",
+        owner="Akiko", account_type="Cash Management", current_value=500, shares=5, cost_basis=500,
+    )
+    insert_holding(
+        name="Roth lot", ticker="AAPL", category="Technology",
+        owner="Akiko", account_type="Roth IRA", current_value=1000, shares=10, cost_basis=1000,
+    )
+    insert_holding(
+        name="IRA lot", ticker="AAPL", category="Technology",
+        owner="Bill", account_type="IRA", current_value=6500, shares=65, cost_basis=6500,
+    )
+    client.put("/api/allocations", json=[
+        {"category": "Technology", "target_percentage": 40},
+        {"category": "Cash", "target_percentage": 60},
+    ])
+
+    recs = {
+        row["category"]: row
+        for row in client.get("/api/rebalance").get_json()["recommendations"]
+    }
+    assert [(t["account_type"], t["amount"]) for t in recs["Technology"]["trades"]] == [
+        ("Broker", 2000),
+        ("Cash Management", 500),
+        ("Roth IRA", 1000),
+        ("IRA", 2500),
+    ]
+    assert recs["Technology"]["trades"][0]["ticker"] == "AAPL"
+    assert recs["Cash"]["action"] == "Buy"
+    assert recs["Cash"]["positions"] == []
+    assert "No holding" in recs["Cash"]["note"]

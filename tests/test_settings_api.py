@@ -91,6 +91,28 @@ def test_put_price_refresh_minutes_rejected(client):
     assert "exceed" in r.get_json()["error"]
 
 
+def test_put_drift_threshold(client):
+    r = client.put("/api/settings", json={"drift_threshold_pts": 2.5})
+    assert r.status_code == 200
+    assert client.get("/api/settings").get_json()["drift_threshold_pts"] == "2.5"
+
+    r = client.put("/api/settings", json={"drift_threshold_pts": -1})
+    assert r.status_code == 400
+    r = client.put("/api/settings", json={"drift_threshold_pts": 51})
+    assert r.status_code == 400
+
+
+def test_put_tax_rates(client):
+    r = client.put("/api/settings", json={"tax_rate_ordinary": 24, "tax_rate_gains": 15})
+    assert r.status_code == 200
+    got = client.get("/api/settings").get_json()
+    assert float(got["tax_rate_ordinary"]) == 24
+    assert float(got["tax_rate_gains"]) == 15
+
+    r = client.put("/api/settings", json={"tax_rate_ordinary": 90})
+    assert r.status_code == 400
+
+
 def test_put_and_get_birthdate(client):
     r = client.put("/api/settings", json={"birthdate_bill": "1960-05-15"})
     assert r.status_code == 200

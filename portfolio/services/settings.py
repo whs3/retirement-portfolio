@@ -21,11 +21,23 @@ WITHDRAWAL_RATE_KEYS = {
 }
 WITHDRAWAL_YEARS_KEY = "withdrawal_years"
 
+# Illustrative defaults. The Planning page shows them and the user can change them.
+TAX_RATE_ORDINARY_KEY = "tax_rate_ordinary"
+TAX_RATE_GAINS_KEY = "tax_rate_gains"
+TAX_RATE_KEYS = {TAX_RATE_ORDINARY_KEY, TAX_RATE_GAINS_KEY}
+DEFAULT_ORDINARY_TAX_PCT = 22.0
+DEFAULT_GAINS_TAX_PCT = 15.0
+
+DRIFT_THRESHOLD_KEY = "drift_threshold_pts"
+DEFAULT_DRIFT_THRESHOLD_PTS = 5.0
+MAX_DRIFT_THRESHOLD_PTS = 50.0
+
 ALLOWED_SETTINGS = (
     {"fmp_api_key", PRICE_REFRESH_KEY}
     | BIRTHDATE_KEYS
     | WITHDRAWAL_RATE_KEYS
-    | {WITHDRAWAL_YEARS_KEY}
+    | TAX_RATE_KEYS
+    | {WITHDRAWAL_YEARS_KEY, DRIFT_THRESHOLD_KEY}
 )
 
 _MIN_BIRTH_YEAR = 1900
@@ -94,6 +106,60 @@ def get_owner_birthdates() -> dict[str, str | None]:
     return {
         "Bill": by_key.get("birthdate_bill"),
         "Akiko": by_key.get("birthdate_akiko"),
+    }
+
+
+def parse_drift_threshold(value) -> str:
+    """Percentage-point gap before a category is a Buy or a Sell. 0–50."""
+    if isinstance(value, bool) or value is None:
+        raise ValueError("Drift threshold must be a number of percentage points")
+    if isinstance(value, str):
+        value = value.strip()
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("Drift threshold must be a number of percentage points") from None
+    if math.isnan(n) or math.isinf(n):
+        raise ValueError("Drift threshold is not a valid number")
+    if n < 0 or n > MAX_DRIFT_THRESHOLD_PTS:
+        raise ValueError(
+            f"Drift threshold must be between 0 and {MAX_DRIFT_THRESHOLD_PTS:g}"
+        )
+    return str(n)
+
+
+def get_drift_threshold_pts() -> float:
+    row = get_db().execute(
+        "SELECT value FROM settings WHERE key=?", (DRIFT_THRESHOLD_KEY,)
+    ).fetchone()
+    if not row or not row["value"]:
+        return DEFAULT_DRIFT_THRESHOLD_PTS
+    try:
+        return float(parse_drift_threshold(row["value"]))
+    except ValueError:
+        return DEFAULT_DRIFT_THRESHOLD_PTS
+
+
+def get_tax_assumptions() -> dict:
+    """Ordinary and long-term-gains rates used to estimate spendable withdrawals."""
+    rows = get_db().execute(
+        "SELECT key, value FROM settings WHERE key IN (?, ?)",
+        (TAX_RATE_ORDINARY_KEY, TAX_RATE_GAINS_KEY),
+    ).fetchall()
+    by_key = {r["key"]: r["value"] for r in rows}
+
+    def _rate(key: str, default: float) -> float:
+        raw = by_key.get(key)
+        if raw is None or raw == "":
+            return default
+        try:
+            return float(parse_withdrawal_rate(raw, key))
+        except ValueError:
+            return default
+
+    return {
+        "tax_rate_ordinary": _rate(TAX_RATE_ORDINARY_KEY, DEFAULT_ORDINARY_TAX_PCT),
+        "tax_rate_gains": _rate(TAX_RATE_GAINS_KEY, DEFAULT_GAINS_TAX_PCT),
     }
 
 

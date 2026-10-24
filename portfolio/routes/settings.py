@@ -7,15 +7,25 @@ from portfolio.services.audit import audit
 from portfolio.services.settings import (
     ALLOWED_SETTINGS,
     BIRTHDATE_KEYS,
+    DRIFT_THRESHOLD_KEY,
     PRICE_REFRESH_KEY,
+    TAX_RATE_GAINS_KEY,
+    TAX_RATE_KEYS,
+    TAX_RATE_ORDINARY_KEY,
     WITHDRAWAL_RATE_KEYS,
     WITHDRAWAL_YEARS_KEY,
     get_price_refresh_minutes,
     parse_birthdate,
+    parse_drift_threshold,
     parse_price_refresh_minutes,
     parse_withdrawal_rate,
     parse_withdrawal_years,
 )
+
+_TAX_RATE_LABELS = {
+    TAX_RATE_ORDINARY_KEY: "Ordinary tax rate",
+    TAX_RATE_GAINS_KEY: "Gains tax rate",
+}
 
 bp = Blueprint("settings", __name__)
 
@@ -60,6 +70,16 @@ def update_settings():
         elif key == WITHDRAWAL_YEARS_KEY:
             try:
                 value = parse_withdrawal_years(value)
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+        elif key in TAX_RATE_KEYS:
+            try:
+                value = parse_withdrawal_rate(value, _TAX_RATE_LABELS[key])
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+        elif key == DRIFT_THRESHOLD_KEY:
+            try:
+                value = parse_drift_threshold(value)
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
         elif not isinstance(value, str):

@@ -62,6 +62,60 @@ def test_add_holding_records_market_value_not_cost_basis(client, app):
     assert rows[0]["account_type"] == "IRA"
 
 
+def test_same_day_sign_fix_then_delete_nets_to_zero(client, app):
+    # Entered with the wrong sign, corrected without changing shares, then
+    # removed. None of that is money entering or leaving the portfolio.
+    r = client.post(
+        "/api/holdings",
+        json={
+            "name": "Vanguard Target Retirement Income Fund",
+            "ticker": "VTINX",
+            "asset_type": "mutual_fund",
+            "owner": "Bill",
+            "account_type": "401k",
+            "shares": -25000,
+            "cost_basis": 342251.78,
+            "current_value": 342251.78,
+        },
+    )
+    hid = r.get_json()["id"]
+    client.put(
+        f"/api/holdings/{hid}",
+        json={"cost_basis": -342251.78, "current_value": -342251.78},
+    )
+    with app.app_context():
+        rows = get_db().execute("SELECT source, amount FROM cash_flows").fetchall()
+    assert [(r["source"], r["amount"]) for r in rows] == [("holding_add", -342251.78)]
+
+    client.delete(f"/api/holdings/{hid}")
+    with app.app_context():
+        net = get_db().execute("SELECT SUM(amount) AS s FROM cash_flows").fetchone()["s"]
+    assert net == 0
+
+
+def test_edit_on_a_later_day_keeps_the_original_add_flow(client, app):
+    r = client.post(
+        "/api/holdings",
+        json={
+            "name": "Apple",
+            "ticker": "AAPL",
+            "asset_type": "stock",
+            "shares": 10,
+            "cost_basis": 1500,
+            "current_value": 2000,
+        },
+    )
+    hid = r.get_json()["id"]
+    with app.app_context():
+        db = get_db()
+        db.execute("UPDATE cash_flows SET flow_date = '2026-01-02'")
+        db.commit()
+    client.put(f"/api/holdings/{hid}", json={"current_value": 2500})
+    with app.app_context():
+        rows = get_db().execute("SELECT source, amount FROM cash_flows").fetchall()
+    assert [(r["source"], r["amount"]) for r in rows] == [("holding_add", 2000)]
+
+
 def test_cost_basis_edit_does_not_record_a_flow(client, seed_holdings, app):
     hid = seed_holdings["aapl"]
     r = client.put(f"/api/holdings/{hid}", json={"cost_basis": 1800, "current_value": 2100})

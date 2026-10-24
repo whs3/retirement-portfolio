@@ -7,7 +7,9 @@ cash is not reported as a return.
 
 Holding adds, share-count edits, deletes, sell-all, and CSV imports record a
 flow automatically. The amount is the value that entered or left, not the
-change in cost basis. Price refreshes and cost-basis-only edits do not.
+change in cost basis. Price refreshes and cost-basis-only edits do not. An
+edit made the same day a holding was added or imported revises that entry's
+flow instead, so fixing a typo does not leave a phantom deposit behind.
 """
 
 from __future__ import annotations
@@ -90,6 +92,33 @@ def insert_cash_flow(
         ),
     )
     return cur.lastrowid
+
+
+def revise_same_day_add_flow(db, holding_id: int, flow_date: str, new_value: float) -> bool:
+    """Re-price the add/import flow when its holding is edited the day it was entered.
+
+    An edit on the entry day is treated as correcting the entry (for example,
+    a sign typo), so the original flow becomes the holding's new value. The
+    share-change rule would record nothing for a value-only edit, and a later
+    delete would then offset the corrected value instead of the original one.
+    Returns True when a flow was revised (or removed because it became dust),
+    in which case the caller should not record a separate edit flow.
+    Does not commit.
+    """
+    row = db.execute(
+        """SELECT id FROM cash_flows
+           WHERE holding_id = ? AND flow_date = ? AND source IN (?, ?)
+           ORDER BY id DESC LIMIT 1""",
+        (holding_id, flow_date, SOURCE_HOLDING_ADD, SOURCE_IMPORT),
+    ).fetchone()
+    if row is None:
+        return False
+    amount = round(float(new_value or 0), 2)
+    if is_significant_value(amount):
+        db.execute("UPDATE cash_flows SET amount = ? WHERE id = ?", (amount, row["id"]))
+    else:
+        db.execute("DELETE FROM cash_flows WHERE id = ?", (row["id"],))
+    return True
 
 
 def list_cash_flows(db, start_date: str | None = None, end_date: str | None = None) -> list[dict]:

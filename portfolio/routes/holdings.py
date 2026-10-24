@@ -13,6 +13,7 @@ from portfolio.services.cash_flows import (
     SOURCE_SELL_ALL,
     external_flow_from_share_change,
     insert_cash_flow,
+    revise_same_day_add_flow,
 )
 from portfolio.timezone_util import today_iso
 from portfolio.validators import VALID_TICKER, is_significant_value, parse_float
@@ -161,19 +162,21 @@ def update_holding(hid):
             hid,
         ),
     )
-    insert_cash_flow(
-        db,
-        flow_date=today_iso(),
-        amount=external_flow_from_share_change(
-            row["shares"], row["current_value"], new_shares, new_value
-        ),
-        owner=owner,
-        account_type=account_type,
-        ticker=ticker,
-        note="Share change",
-        source=SOURCE_HOLDING_EDIT,
-        holding_id=hid,
-    )
+    flow_date = today_iso()
+    if not revise_same_day_add_flow(db, hid, flow_date, new_value):
+        insert_cash_flow(
+            db,
+            flow_date=flow_date,
+            amount=external_flow_from_share_change(
+                row["shares"], row["current_value"], new_shares, new_value
+            ),
+            owner=owner,
+            account_type=account_type,
+            ticker=ticker,
+            note="Share change",
+            source=SOURCE_HOLDING_EDIT,
+            holding_id=hid,
+        )
     db.commit()
     audit(
         "EDIT",

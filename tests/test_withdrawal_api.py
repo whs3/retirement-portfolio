@@ -29,6 +29,8 @@ def test_query_params_override_defaults(client, insert_holding):
         "expected_return_pct": 7.0,
         "inflation_pct": 2.0,
         "years": 10,
+        "ordinary_tax_pct": 22.0,
+        "gains_tax_pct": 15.0,
     }
     assert len(data["rows"]) == 10
 
@@ -51,3 +53,30 @@ def test_invalid_rate_rejected(client):
 def test_invalid_years_rejected(client):
     r = client.get("/api/withdrawal?years=0")
     assert r.status_code == 400
+
+
+def test_taxable_withdrawal_uses_gains_rate(client, insert_holding):
+    insert_holding(owner="Bill", account_type="Broker", current_value=100_000)
+    client.put("/api/settings", json={
+        "withdrawal_rate": 4,
+        "withdrawal_return_rate": 0,
+        "withdrawal_inflation_rate": 0,
+        "withdrawal_years": 1,
+        "tax_rate_ordinary": 22,
+        "tax_rate_gains": 10,
+    })
+    row = client.get("/api/withdrawal").get_json()["rows"][0]
+    assert row["withdrawal"] == 4_000
+    assert row["tax"] == 400
+    assert row["spendable"] == 3_600
+    assert row["rmd"] == 0
+
+
+def test_pretax_query_tax_rate_overrides_saved_default(client, insert_holding):
+    insert_holding(owner="Bill", account_type="IRA", current_value=100_000)
+    row = client.get(
+        "/api/withdrawal?rate=4&return_rate=0&inflation_rate=0&years=1&ordinary_tax=10&gains_tax=15"
+    ).get_json()["rows"][0]
+    assert row["sources"]["pretax"] == 4_000
+    assert row["tax"] == 400
+    assert row["spendable"] == 3_600

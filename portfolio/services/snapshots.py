@@ -19,6 +19,30 @@ from portfolio.timezone_util import now_iso, now_local, today_iso
 from portfolio.validators import NEGLIGIBLE_VALUE, is_significant_value
 
 
+def owner_accounts_from_holdings(holdings_rows) -> dict:
+    """Owner → account type → value, including cash.
+
+    Rounded buckets under one cent are dropped. An empty dict means the
+    breakdown was captured and nothing was held, which is different from a
+    missing snapshot column.
+    """
+    totals: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    for h in holdings_rows:
+        owner = (h["owner"] or "").strip() or "Unassigned"
+        account = (h["account_type"] or "").strip() or "Unassigned"
+        totals[owner][account] += h["current_value"] or 0.0
+    result: dict[str, dict[str, float]] = {}
+    for owner, accounts in totals.items():
+        rounded = {
+            account: round(value, 2)
+            for account, value in accounts.items()
+            if abs(round(value, 2)) >= 0.01
+        }
+        if rounded:
+            result[owner] = rounded
+    return result
+
+
 def capture_snapshot() -> None:
     """Upsert today's row from the current holdings table (no network calls)."""
     db = get_db()
@@ -68,17 +92,19 @@ def capture_snapshot() -> None:
 
     today = today_iso()
     captured_at = now_iso()
+    owner_accounts_json = json.dumps(owner_accounts_from_holdings(holdings_rows))
     db.execute(
         """INSERT INTO portfolio_snapshots
                (date, total_value, total_cost_basis, category_json, holdings_json,
-                untracked_value, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
+                untracked_value, created_at, owner_accounts_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(date) DO UPDATE SET
                total_value=excluded.total_value,
                total_cost_basis=excluded.total_cost_basis,
                category_json=excluded.category_json,
                holdings_json=excluded.holdings_json,
-               untracked_value=excluded.untracked_value""",
+               untracked_value=excluded.untracked_value,
+               owner_accounts_json=excluded.owner_accounts_json""",
         (
             today,
             round(total_value, 2),
@@ -87,6 +113,7 @@ def capture_snapshot() -> None:
             json.dumps(holdings_json),
             round(untracked_value, 2),
             captured_at,
+            owner_accounts_json,
         ),
     )
     db.commit()

@@ -1,14 +1,18 @@
 """Required Minimum Distribution (RMD) estimation.
 
-Estimates only -- not tax advice. Uses the IRS Uniform Lifetime Table (the
-table that applies to nearly everyone; it does not apply if a spouse is the
-sole beneficiary and more than 10 years younger, which uses the lower Joint
-and Last Survivor table instead). Treats the holding's *current* value as a
-stand-in for the prior-year-end balance the IRS actually requires.
+Estimates only. Uses the IRS Uniform Lifetime Table. The Joint and Last
+Survivor table applies when a spouse is the sole beneficiary and more than
+10 years younger; this estimate keeps the Uniform Lifetime Table for everyone.
+
+The balance for a calendar year is the prior December 31 snapshot when that
+row has an owner and account breakdown. Otherwise the current tax-deferred
+balance stands in, which covers years before those snapshots existed.
+Age for the table is the age reached on December 31 of the distribution year.
 """
 
 from __future__ import annotations
 
+import json
 from datetime import date
 
 # Account types treated as pre-tax / RMD-subject. The app does not currently
@@ -48,10 +52,11 @@ def calculate_age(birthdate: date, as_of: date) -> int:
 
 
 def calculate_rmd(birthdate: date, balance: float, as_of: date | None = None) -> dict:
-    """Return this year's RMD estimate for one owner.
+    """Return an RMD estimate for one owner as of ``as_of``.
 
-    ``balance`` should be the account's current value, used as a stand-in
-    for the prior-year-end balance the IRS calculation actually requires.
+    Pass December 31 of the distribution year so the age matches the Uniform
+    Lifetime Table. ``balance`` is the prior-year-end tax-deferred balance
+    when a snapshot has it, and the current balance otherwise.
     """
     as_of = as_of or date.today()
     age = calculate_age(birthdate, as_of)
@@ -107,3 +112,83 @@ def project_rmds(
         })
         balance = max(0.0, balance - info["rmd_amount"]) * (1 + return_rate_pct / 100)
     return rows
+
+
+def _rmd_balance_for_owner(owner_accounts: dict, owner: str) -> float:
+    accounts = owner_accounts.get(owner) or {}
+    if not isinstance(accounts, dict):
+        return 0.0
+    total = sum(
+        float(value or 0)
+        for account_type, value in accounts.items()
+        if account_type in RMD_SUBJECT_ACCOUNT_TYPES
+    )
+    return round(total, 2)
+
+
+def _current_rmd_balances(db) -> dict[str, float]:
+    placeholders = ",".join("?" * len(RMD_SUBJECT_ACCOUNT_TYPES))
+    rows = db.execute(
+        f"""SELECT owner, SUM(current_value) AS balance
+            FROM holdings
+            WHERE owner IN ('Bill', 'Akiko') AND account_type IN ({placeholders})
+            GROUP BY owner""",
+        tuple(RMD_SUBJECT_ACCOUNT_TYPES),
+    ).fetchall()
+    found = {r["owner"]: round(r["balance"] or 0.0, 2) for r in rows}
+    return {owner: found.get(owner, 0.0) for owner in ("Bill", "Akiko")}
+
+
+def resolve_rmd_balances(db, as_of: date) -> dict:
+    """Prior-year-end tax-deferred balances for Bill and Akiko.
+
+    ``source`` is ``snapshot`` when ``{year-1}-12-31`` has an owner/account
+    breakdown (including an empty one). Otherwise ``source`` is ``current``
+    and today's balances are used.
+    """
+    prior = date(as_of.year - 1, 12, 31).isoformat()
+    row = db.execute(
+        "SELECT owner_accounts_json FROM portfolio_snapshots WHERE date = ?",
+        (prior,),
+    ).fetchone()
+
+    parsed = None
+    if row is not None and row["owner_accounts_json"]:
+        try:
+            loaded = json.loads(row["owner_accounts_json"])
+        except (TypeError, json.JSONDecodeError):
+            loaded = None
+        if isinstance(loaded, dict):
+            parsed = loaded
+
+    if parsed is not None:
+        return {
+            "source": "snapshot",
+            "as_of": prior,
+            "note": (
+                f"{as_of.year} required distributions use the {prior} snapshot."
+            ),
+            "balances": {
+                owner: _rmd_balance_for_owner(parsed, owner)
+                for owner in ("Bill", "Akiko")
+            },
+        }
+
+    if row is not None:
+        note = (
+            f"Today's tax-deferred balances stand in for {prior}, because that "
+            "snapshot has no owner and account breakdown. Snapshots recorded "
+            "from now on include it, and next year's distribution can use "
+            "this December 31."
+        )
+    else:
+        note = (
+            f"Today's tax-deferred balances stand in for {prior}, because no "
+            "snapshot is stored for that date."
+        )
+    return {
+        "source": "current",
+        "as_of": as_of.isoformat(),
+        "note": note,
+        "balances": _current_rmd_balances(db),
+    }

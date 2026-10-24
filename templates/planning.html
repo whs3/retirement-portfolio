@@ -14,12 +14,16 @@
 <div class="card">
   <h2 class="card-title">Safe Withdrawal Rate Projection</h2>
   <p class="card-description">
-    Assumes a fixed % of your current total portfolio value is withdrawn in year one, and that
-    withdrawal grows with inflation every year after (the classic "4% rule" methodology) — not
-    Monte Carlo, not tax-adjusted.
+    The first year is next calendar year. The planned withdrawal starts as this percent of
+    today's portfolio and then grows with inflation. In any year the household required
+    distribution is larger, the withdrawal rises to match it, using the same balances and
+    return as the RMD section. Spendable is that withdrawal after a simple tax estimate:
+    pre-tax dollars at the ordinary rate, taxable accounts at the gains rate, and Roth at
+    zero. Amounts above the required distribution come from taxable accounts first.
+    The rates are assumptions you can change.
   </p>
 
-  <div class="form-grid" style="grid-template-columns:repeat(4,1fr)">
+  <div class="form-grid planning-assumptions">
     <div class="form-group">
       <label for="wdRate">Annual Withdrawal Rate (%)</label>
       <input type="number" id="wdRate" min="0" max="50" step="0.1">
@@ -35,6 +39,14 @@
     <div class="form-group">
       <label for="wdYears">Projection Years</label>
       <input type="number" id="wdYears" min="1" max="60" step="1">
+    </div>
+    <div class="form-group">
+      <label for="wdOrdinaryTax">Ordinary Tax Rate (%)</label>
+      <input type="number" id="wdOrdinaryTax" min="0" max="50" step="0.1">
+    </div>
+    <div class="form-group">
+      <label for="wdGainsTax">Taxable Gains Rate (%)</label>
+      <input type="number" id="wdGainsTax" min="0" max="50" step="0.1">
     </div>
   </div>
 
@@ -53,7 +65,11 @@
           <tr>
             <th>Year</th>
             <th class="text-right">Start Balance</th>
+            <th class="text-right">Planned</th>
+            <th class="text-right">RMD</th>
             <th class="text-right">Withdrawal</th>
+            <th class="text-right">Tax</th>
+            <th class="text-right">Spendable</th>
             <th class="text-right">End Balance</th>
           </tr>
         </thead>
@@ -67,10 +83,12 @@
 <div class="card">
   <h2 class="card-title">Required Minimum Distributions (RMD)</h2>
   <p class="card-description">
-    Uses the IRS Uniform Lifetime Table and your current account balances as a stand-in for the
-    prior-year-end balance the IRS calculation actually requires. Only 401k, 403b, IRA, and
-    Rollover IRA balances count — Roth accounts and taxable accounts are excluded. Does not apply
-    if a spouse is the sole beneficiary and more than 10 years younger (Joint Life table instead).
+    Uses the IRS Uniform Lifetime Table and the age reached on December 31. When a December 31
+    snapshot has balances by owner and account, that prior-year-end balance is the base.
+    Otherwise today's tax-deferred balance is used, which covers years before those snapshots
+    existed. Only Bill's and Akiko's 401k, 403b, IRA, and Rollover IRA balances count.
+    The Joint and Last Survivor table applies when a spouse is the sole beneficiary and more
+    than ten years younger. This estimate keeps the Uniform Lifetime Table for everyone.
   </p>
 
   <div class="form-grid" style="grid-template-columns:repeat(2,1fr)">
@@ -83,7 +101,8 @@
       <input type="date" id="birthdateAkiko">
     </div>
   </div>
-  <div id="rmdSaveStatus" class="text-muted" style="font-size:0.8rem;margin-bottom:1rem"></div>
+  <div id="rmdSaveStatus" class="text-muted" style="font-size:0.8rem;margin-bottom:0.35rem"></div>
+  <p id="rmdBalanceNote" class="text-muted" style="font-size:0.8rem;margin-bottom:1rem"></p>
 
   <div class="table-responsive">
     <table class="table">

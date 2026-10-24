@@ -56,3 +56,53 @@ def test_zero_starting_balance():
     result = project_withdrawals(0, 4, 6, 3, 5)
     assert result["depletion_year"] is None
     assert all(row["end_balance"] == 0.0 for row in result["rows"])
+
+
+def test_rmd_floor_raises_the_withdrawal_and_taxes_by_account():
+    result = project_withdrawals(
+        200_000, 4, 6, 0, 2,
+        rmd_by_calendar_year={2027: 20_000, 2028: 5_000},
+        buckets={"pretax": 100_000, "taxable": 50_000, "roth": 50_000},
+        ordinary_tax_pct=22,
+        gains_tax_pct=15,
+        as_of=date(2026, 6, 1),
+    )
+    first = result["rows"][0]
+    assert first["calendar_year"] == 2027
+    assert first["planned_withdrawal"] == 8_000
+    assert first["rmd"] == 20_000
+    assert first["withdrawal"] == 20_000
+    assert first["sources"] == {"pretax": 20_000, "taxable": 0, "roth": 0}
+    assert first["tax"] == 4_400
+    assert first["spendable"] == 15_600
+    assert first["end_balance"] == 190_800
+
+    second = result["rows"][1]
+    assert second["rmd"] == 5_000
+    assert second["withdrawal"] == 8_000
+    assert second["sources"]["pretax"] == 5_000
+    assert second["sources"]["taxable"] == 3_000
+    assert second["sources"]["roth"] == 0
+    assert second["tax"] == 1_550
+    assert second["spendable"] == 6_450
+
+
+def test_roth_withdrawal_is_untaxed():
+    result = project_withdrawals(
+        100_000, 4, 0, 0, 1,
+        buckets={"pretax": 0, "taxable": 0, "roth": 100_000},
+        ordinary_tax_pct=22,
+        gains_tax_pct=15,
+        as_of=date(2026, 1, 1),
+    )
+    row = result["rows"][0]
+    assert row["sources"]["roth"] == 4_000
+    assert row["tax"] == 0
+    assert row["spendable"] == 4_000
+
+
+def test_rates_alone_do_not_tax_a_projection_without_account_balances():
+    result = project_withdrawals(100_000, 4, 0, 0, 1, ordinary_tax_pct=22, gains_tax_pct=15)
+    assert result["rows"][0]["withdrawal"] == 4_000
+    assert result["rows"][0]["tax"] == 0
+    assert result["rows"][0]["spendable"] == 4_000

@@ -108,11 +108,19 @@ def init_db(database_path: str | None = None):
             category_json    TEXT NOT NULL,
             holdings_json    TEXT NOT NULL,
             untracked_value  REAL NOT NULL,
-            created_at       TEXT NOT NULL
+            created_at       TEXT NOT NULL,
+            owner_accounts_json TEXT
         );
         """
     )
     conn.commit()
+    # Existing databases were created before owner/account balances were stored.
+    # NULL means that day's row has no breakdown. An empty object means the
+    # breakdown was captured and every balance was zero.
+    snap_cols = [row[1] for row in conn.execute("PRAGMA table_info(portfolio_snapshots)")]
+    if "owner_accounts_json" not in snap_cols:
+        conn.execute("ALTER TABLE portfolio_snapshots ADD COLUMN owner_accounts_json TEXT")
+        conn.commit()
     # External deposits and withdrawals. Investment return is the change in
     # portfolio value minus these amounts, so a deposit is not a gain.
     conn.executescript(

@@ -65,6 +65,7 @@ def test_capture_snapshot_creates_row_for_today(app_ctx):
     holdings = json.loads(row["holdings_json"])
     assert holdings["AAPL"]["value"] == 1500
     assert holdings["AAPL"]["category"] == "Technology"
+    assert json.loads(row["owner_accounts_json"]) == {"Bill": {"IRA": 1500.0}}
 
 
 def test_capture_snapshot_upserts_same_day(app_ctx):
@@ -183,6 +184,10 @@ def test_backfill_populates_from_build_performance(app_ctx):
     ).fetchone()
     assert today_row is not None
     assert today_row["total_value"] == 1500
+    assert json.loads(today_row["owner_accounts_json"])["Bill"]["IRA"] == 1500
+    older = [r for r in rows if r["date"] != TODAY]
+    assert older
+    assert all(r["owner_accounts_json"] is None for r in older)
     marker = db.execute(
         "SELECT value FROM settings WHERE key = 'performance_backfilled_at'"
     ).fetchone()

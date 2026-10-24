@@ -24,6 +24,8 @@ function currentWdInputs() {
     return_rate:    document.getElementById('wdReturn').value,
     inflation_rate: document.getElementById('wdInflation').value,
     years:          document.getElementById('wdYears').value,
+    ordinary_tax:   document.getElementById('wdOrdinaryTax').value,
+    gains_tax:      document.getElementById('wdGainsTax').value,
   };
 }
 
@@ -31,7 +33,12 @@ async function loadWithdrawal(useDefaults) {
   const status = document.getElementById('wdStatus');
   const token  = ++wdFetchToken;
 
-  const params = new URLSearchParams(useDefaults ? {} : currentWdInputs());
+  const params = new URLSearchParams();
+  if (!useDefaults) {
+    Object.entries(currentWdInputs()).forEach(([key, value]) => {
+      if (value !== '') params.set(key, value);
+    });
+  }
   status.textContent = 'Calculating…';
 
   try {
@@ -46,10 +53,12 @@ async function loadWithdrawal(useDefaults) {
     status.textContent = '';
 
     if (useDefaults) {
-      document.getElementById('wdRate').value      = data.assumptions.annual_rate_pct;
-      document.getElementById('wdReturn').value    = data.assumptions.expected_return_pct;
-      document.getElementById('wdInflation').value = data.assumptions.inflation_pct;
-      document.getElementById('wdYears').value     = data.assumptions.years;
+      document.getElementById('wdRate').value        = data.assumptions.annual_rate_pct;
+      document.getElementById('wdReturn').value      = data.assumptions.expected_return_pct;
+      document.getElementById('wdInflation').value   = data.assumptions.inflation_pct;
+      document.getElementById('wdYears').value       = data.assumptions.years;
+      document.getElementById('wdOrdinaryTax').value = data.assumptions.ordinary_tax_pct;
+      document.getElementById('wdGainsTax').value    = data.assumptions.gains_tax_pct;
     }
 
     renderWithdrawalSummary(data);
@@ -68,16 +77,30 @@ function renderWithdrawalSummary(data) {
     return;
   }
   const lastRow = data.rows[data.rows.length - 1];
+  const first = data.rows[0];
+  let text;
   if (data.depletion_year != null) {
     const row = data.rows[data.depletion_year - 1];
     el.className = 'alert alert-warning';
-    el.textContent = `Starting from ${fmt(data.starting_balance)}, the portfolio is projected to run out `
+    text = `Starting from ${fmt(data.starting_balance)}, the portfolio is projected to run out `
       + `in year ${data.depletion_year} (${row.calendar_year}) at these assumptions.`;
   } else {
     el.className = 'alert alert-success';
-    el.textContent = `Starting from ${fmt(data.starting_balance)}, the portfolio is projected to last the `
+    text = `Starting from ${fmt(data.starting_balance)}, the portfolio is projected to last the `
       + `full ${data.assumptions.years} years, ending around ${fmt(lastRow.end_balance)} in ${lastRow.calendar_year}.`;
   }
+  if (first.rmd > first.planned_withdrawal + 0.5) {
+    text += ` In ${first.calendar_year} the required distribution of ${fmt(first.rmd)} is above the `
+      + `${data.assumptions.annual_rate_pct}% withdrawal, so the plan withdraws ${fmt(first.withdrawal)}.`;
+  }
+  if (first.tax > 0.5) {
+    text += ` About ${fmt(first.spendable)} of that is spendable after an estimated ${fmt(first.tax)} in tax.`;
+  }
+  const buckets = data.tax_buckets;
+  if (buckets) {
+    text += ` Today's mix is ${fmt(buckets.pretax)} pre-tax, ${fmt(buckets.taxable)} taxable, and ${fmt(buckets.roth)} Roth.`;
+  }
+  el.textContent = text;
   el.style.display = 'block';
 }
 
@@ -139,13 +162,21 @@ function renderWithdrawalTable(data) {
     wrap.style.display = 'none';
     return;
   }
-  body.innerHTML = data.rows.map(r => `
+  body.innerHTML = data.rows.map(r => {
+    const sources = r.sources || {};
+    const taxTitle = `Pre-tax ${fmt(sources.pretax || 0)}, taxable ${fmt(sources.taxable || 0)}, Roth ${fmt(sources.roth || 0)}`;
+    return `
     <tr>
       <td>${r.year} (${r.calendar_year})</td>
       <td class="text-right">${fmt(r.start_balance)}</td>
+      <td class="text-right">${fmt(r.planned_withdrawal)}</td>
+      <td class="text-right">${r.rmd ? fmt(r.rmd) : '—'}</td>
       <td class="text-right">${fmt(r.withdrawal)}</td>
+      <td class="text-right" title="${esc(taxTitle)}">${r.tax ? fmt(r.tax) : '—'}</td>
+      <td class="text-right">${fmt(r.spendable)}</td>
       <td class="text-right">${fmt(r.end_balance)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   wrap.style.display = '';
 }
 
@@ -162,9 +193,14 @@ function queueWithdrawalSave() {
           withdrawal_return_rate:     inputs.return_rate,
           withdrawal_inflation_rate:  inputs.inflation_rate,
           withdrawal_years:           inputs.years,
+          tax_rate_ordinary:          inputs.ordinary_tax,
+          tax_rate_gains:             inputs.gains_tax,
         }),
       });
+      loadRmd();
     } catch (err) {
+      const status = document.getElementById('wdStatus');
+      if (status) status.textContent = err.message || 'Save failed.';
       console.error('saving withdrawal assumptions failed:', err);
     }
   }, 500);
@@ -183,6 +219,9 @@ async function loadRmd() {
   const body = document.getElementById('rmdBody');
   try {
     const data = await apiFetch('/api/rmd');
+
+    const note = document.getElementById('rmdBalanceNote');
+    if (note) note.textContent = data.balance_note || '';
 
     const billInput  = document.getElementById('birthdateBill');
     const akikoInput = document.getElementById('birthdateAkiko');
@@ -262,6 +301,7 @@ function queueBirthdateSave(key, value) {
       });
       status.textContent = 'Saved.';
       loadRmd();
+      loadWithdrawal(false);
     } catch (err) {
       status.textContent = err.message || 'Save failed.';
     }
@@ -272,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadWithdrawal(true);
   loadRmd();
 
-  ['wdRate', 'wdReturn', 'wdInflation', 'wdYears'].forEach(id => {
+  ['wdRate', 'wdReturn', 'wdInflation', 'wdYears', 'wdOrdinaryTax', 'wdGainsTax'].forEach(id => {
     document.getElementById(id).addEventListener('input', queueWithdrawalSave);
   });
 

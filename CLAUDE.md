@@ -54,14 +54,14 @@ Package-based Flask backend with a plain HTML/JS frontend. No build step.
 **Package** (`portfolio/`)
 - `create_app()` in `portfolio/__init__.py` wires config, extensions, DB, security hooks, and blueprints.
 - `portfolio/config.py` — env / optional `.env`, stable `SECRET_KEY` (env or `.secret_key` file), path resolution from project root.
-- `portfolio/db.py` — `get_db()` / `close_db()` / `init_db()` (SQLite via Flask `g`; WAL + foreign_keys on connect).
+- `portfolio/db.py` — `get_db()` / `close_db()` / `init_db()` (SQLite via Flask `g`; WAL + foreign_keys + busy_timeout on every connection). `init_db()` runs the whole `_SCHEMA` script (all `CREATE TABLE IF NOT EXISTS`), then `_migrate()`. To add a column to an existing table, append `(table, column, definition)` to `_ADDED_COLUMNS` (added only if `PRAGMA table_info` shows it missing) and also put it in `_SCHEMA` so fresh databases get it, except `holdings.owner`/`account_type`, which are left out of `CREATE TABLE` so the column order stays the same.
 - `portfolio/routes/` — page and JSON API blueprints (one module per area).
 - `portfolio/services/` — business logic and external data (yfinance, ETF providers, performance, insights).
 - `portfolio/validators.py` — ticker regex and numeric parsing.
 - `portfolio/security.py` — LAN allowlist + security headers.
 - SQLite database (`portfolio.db`) is created automatically via `init_db()` inside `create_app()`.
 - Tables: `holdings`, `target_allocations`, `settings`, `portfolio_snapshots`, `cash_flows` (external deposits/withdrawals).
-- `holdings` includes `owner` and `account_type` columns via migration in `init_db()`.
+- `holdings` gets its `owner` and `account_type` columns from `_ADDED_COLUMNS`, even on a fresh database.
 - `backup_db.py` — WAL-safe timestamped backups under `backups/`.
 - `TEMPLATES_AUTO_RELOAD = True` — template changes are picked up without restarting (Python changes still need a restart).
 
